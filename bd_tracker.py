@@ -1,12 +1,15 @@
 """
-BD Tracker — Business Development Command Centre
+BD Tracker -- Business Development Command Centre
 Connects to Outlook via Microsoft Graph, tracks client outreach,
 and presents a clean pipeline dashboard.
 """
 
+from __future__ import annotations
+
 import html
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import msal
 import pandas as pd
@@ -24,8 +27,15 @@ st.set_page_config(
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-CLIENT_ID = st.secrets["CLIENT_ID"]
-TENANT_ID = st.secrets["TENANT_ID"]
+try:
+    CLIENT_ID = st.secrets["CLIENT_ID"]
+except Exception:
+    CLIENT_ID = "74a06330-3a89-4cf8-871d-9d783c483d9d"  # fallback for local dev
+
+try:
+    TENANT_ID = st.secrets["TENANT_ID"]
+except Exception:
+    TENANT_ID = "a14b16a4-0cbe-435c-a893-78e3e95b09c3"  # fallback for local dev
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Mail.Read"]
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -592,7 +602,7 @@ def render_top_nav() -> None:
                     except Exception as exc:
                         st.error(str(exc))
         with c3:
-            with st.popover("Settings", use_container_width=True):
+            with st.expander("Settings"):
                 new_domains = st.text_input(
                     "Internal domains (comma-separated)",
                     value=st.session_state.internal_domains,
