@@ -359,40 +359,43 @@ def render_auth_screen() -> None:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.title("BD Tracker")
     st.write(
-        "Authenticate with Microsoft using device code flow, then load recent Inbox and Sent Items directly from Microsoft Graph."
+        "Sign in with your Microsoft account to connect Outlook and load recent business development activity."
     )
-    st.code(f"Client ID: {CLIENT_ID}\nTenant ID: {TENANT_ID}\nScopes: {', '.join(SCOPES)}")
+    st.caption("You’ll authenticate in a separate Microsoft window, then return here to continue.")
+    with st.expander("Connection details", expanded=False):
+        st.caption("Technical details for troubleshooting only.")
+        st.code(f"Client ID: {CLIENT_ID}\nTenant ID: {TENANT_ID}\nScopes: {', '.join(SCOPES)}")
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("Start sign-in", type="primary", use_container_width=True):
+    if not st.session_state.device_flow:
+        if st.button("Connect Microsoft account", type="primary", use_container_width=True):
             try:
                 start_device_flow()
             except Exception as exc:
                 st.error(str(exc))
-
-    with col2:
-        can_complete = bool(st.session_state.device_flow)
-        if st.button("I have authenticated", use_container_width=True, disabled=not can_complete):
+    else:
+        st.success("Authentication started")
+        st.write("Open the Microsoft device login page, enter the code below, complete sign-in, then come back here.")
+        st.code(st.session_state.user_code)
+        if st.session_state.auth_message:
+            st.caption(st.session_state.auth_message)
+        if st.button("I’ve completed sign-in", type="primary", use_container_width=True):
             try:
                 complete_device_flow()
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
 
-    if st.session_state.auth_message:
-        st.info(st.session_state.auth_message)
-        if st.session_state.user_code:
-            st.code(st.session_state.user_code)
-
     st.markdown("</div>", unsafe_allow_html=True)
 
+    
 
 def render_sidebar(df: pd.DataFrame) -> tuple[str, str, str]:
     with st.sidebar:
-        st.header("Filters")
+        st.header("Workspace")
         account_label = st.session_state.account_label or "Signed in"
         st.caption(account_label)
+        st.markdown("---")
+        st.subheader("Filters")
 
         internal_domains = st.text_input(
             "Internal domains",
@@ -422,11 +425,11 @@ def render_dashboard(df: pd.DataFrame) -> None:
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
     st.title("Business Development Tracker")
-    st.caption("Dark, local-first Streamlit app using Microsoft device code flow and Graph.")
+    st.caption("Track outreach, responses, meetings and proposals from Outlook in one place.")
 
     col_a, col_b = st.columns([3, 1])
     with col_a:
-        st.markdown("<div class='card'><strong>Ready to sync</strong><br>Pull recent Inbox and Sent Items from Outlook, classify outreach stage, and export the tracker.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='card'><strong>Ready to sync</strong><br>Pull recent Inbox and Sent Items from Outlook, update the tracker automatically, and export the latest view when needed.</div>", unsafe_allow_html=True)
     with col_b:
         if st.button("Sync Outlook", type="primary", use_container_width=True):
             try:
