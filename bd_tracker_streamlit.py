@@ -500,33 +500,46 @@ def apply_filters(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+def _brand_html() -> str:
+    """Forethought brand mark as inline HTML."""
+    return (
+        '<div class="nav-brand">'
+        '<div class="nav-brand-icon">F</div>'
+        '<div class="nav-brand-text">Forethought'
+        '<span class="accent">Outcomes</span></div>'
+        '</div>'
+    )
+
+
 def render_auth_screen() -> None:
     """Centered authentication card with device-code flow."""
-    # Use columns to center the auth card
-    _, center, _ = st.columns([1.2, 2, 1.2])
+    _, center, _ = st.columns([1.3, 1.8, 1.3])
 
     with center:
-        st.markdown("<div style='height:10vh'></div>", unsafe_allow_html=True)
-
         if not st.session_state.device_flow:
-            # ── Step 1: Connect button ──
             st.markdown(
-                """
+                f"""
+                <div class="auth-outer">
                 <div class="auth-card">
-                    <h1>BD Tracker</h1>
+                    <div class="auth-logo">
+                        <div class="auth-logo-icon">F</div>
+                        <div class="auth-logo-text">Forethought</div>
+                    </div>
+                    <div class="auth-title">BD Tracker</div>
                     <div class="auth-subtitle">
                         Connect your Microsoft account to sync Outlook
                         and track client business development activity.
                     </div>
                 </div>
+                </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             if st.button(
                 "Connect Microsoft Account",
                 type="primary",
                 use_container_width=True,
+                key="auth_connect",
             ):
                 try:
                     start_device_flow()
@@ -534,66 +547,78 @@ def render_auth_screen() -> None:
                 except Exception as exc:
                     st.error(str(exc))
 
+            st.markdown(
+                '<div class="auth-footer">'
+                'Read-only access \u00b7 Mail.Read permission only'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
         else:
-            # ── Step 2: Device code display ──
             code = st.session_state.user_code or "--------"
             st.markdown(
                 f"""
+                <div class="auth-outer">
                 <div class="auth-card">
-                    <h1>Sign in to continue</h1>
+                    <div class="auth-logo">
+                        <div class="auth-logo-icon">F</div>
+                        <div class="auth-logo-text">Forethought</div>
+                    </div>
+                    <div class="auth-title">Enter the code below</div>
                     <div class="auth-subtitle">
-                        Open the Microsoft login page, enter the code below,
+                        Go to the Microsoft login page, enter this code,
                         and complete sign-in. Then return here.
                     </div>
                     <div class="device-code-display">{_esc(code)}</div>
                     <div class="auth-instruction">
-                        Go to
+                        Open
                         <a href="https://microsoft.com/devicelogin"
                            target="_blank">microsoft.com/devicelogin</a>
                         and enter the code above.
                     </div>
                 </div>
+                </div>
                 """,
                 unsafe_allow_html=True,
             )
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             if st.button(
                 "I\u2019ve completed sign-in",
                 type="primary",
                 use_container_width=True,
+                key="auth_complete",
             ):
-                with st.spinner("Verifying authentication\u2026"):
+                with st.spinner("Verifying\u2026"):
                     try:
                         complete_device_flow()
                         st.rerun()
                     except Exception as exc:
                         st.error(str(exc))
 
-        # Footer hint
-        st.markdown(
-            '<div class="auth-step">Read-only access \u00b7 Mail.Read permission only</div>',
-            unsafe_allow_html=True,
-        )
+            st.markdown(
+                '<div class="auth-footer">'
+                'Read-only access \u00b7 Mail.Read permission only'
+                '</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_top_nav() -> None:
-    """Top navigation bar: brand, account info, sync + sign out buttons."""
-    left, right = st.columns([3, 2])
+    """Top navigation bar: brand left, sync + sign out right."""
+    left, mid, right = st.columns([2.5, 3, 2])
 
     with left:
+        st.markdown(_brand_html(), unsafe_allow_html=True)
+
+    with mid:
         st.markdown(
-            '<div class="nav-brand">BD <span>Tracker</span></div>',
+            f'<div class="nav-account" style="text-align:center;">'
+            f'{_esc(st.session_state.account_label)}</div>',
             unsafe_allow_html=True,
         )
 
     with right:
-        c1, c2, c3, c4 = st.columns([3, 2, 2, 1.5])
+        c1, c2 = st.columns(2)
         with c1:
-            st.markdown(
-                f'<div class="nav-account">{_esc(st.session_state.account_label)}</div>',
-                unsafe_allow_html=True,
-            )
-        with c2:
             if st.button("Sync Outlook", type="primary", use_container_width=True):
                 with st.spinner("Syncing\u2026"):
                     try:
@@ -601,22 +626,22 @@ def render_top_nav() -> None:
                         st.rerun()
                     except Exception as exc:
                         st.error(str(exc))
-        with c3:
-            with st.expander("Settings"):
-                new_domains = st.text_input(
-                    "Internal domains (comma-separated)",
-                    value=st.session_state.internal_domains,
-                    help="Email domains to exclude as internal.",
-                )
-                if new_domains != st.session_state.internal_domains:
-                    st.session_state.internal_domains = new_domains
-        with c4:
+        with c2:
             if st.button("Sign out", use_container_width=True):
                 sign_out()
                 st.rerun()
 
-    # Divider
     st.markdown('<hr class="subtle-divider">', unsafe_allow_html=True)
+
+    # Settings as a collapsible row below nav (not crammed into nav)
+    with st.expander("Settings"):
+        new_domains = st.text_input(
+            "Internal domains (comma-separated)",
+            value=st.session_state.internal_domains,
+            help="Email domains to exclude as internal.",
+        )
+        if new_domains != st.session_state.internal_domains:
+            st.session_state.internal_domains = new_domains
 
 
 def render_pipeline_bar(df: pd.DataFrame) -> None:
