@@ -1,14 +1,14 @@
 /* ============================================================
    BD Tracker — Forethought Outcomes
-   Dark Premium Theme
+   Dark Premium Theme — High Readability
    ============================================================ */
 
 /* --- 1. Base / App Background --- */
 .stApp {
-    background: radial-gradient(ellipse at 20% 0%, rgba(0,178,169,0.05) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 0%, rgba(0,178,169,0.03) 0%, transparent 40%),
+    background: radial-gradient(ellipse at 20% 0%, rgba(0,178,169,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 0%, rgba(0,178,169,0.02) 0%, transparent 40%),
                 #0a0f1c;
-    color: #d0d7e3;
+    color: #c8d0de;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -28,54 +28,20 @@ footer { visibility: hidden; }
 div[data-testid="stSidebar"] { display: none !important; }
 
 /* --- 3. Top Navigation --- */
-.top-nav {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 0 16px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
-}
 .nav-brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    padding: 4px 0;
 }
-.nav-brand-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #00b2a9, #00948d);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    color: #fff;
-    font-weight: 700;
-}
-.nav-brand-text {
-    font-size: 1.15rem;
-    font-weight: 700;
-    color: #e8edf7;
-    letter-spacing: -0.02em;
-}
-.nav-brand-text .accent {
-    color: #00b2a9;
-    font-weight: 400;
-    font-size: 0.85rem;
-    margin-left: 6px;
-    letter-spacing: 0;
-}
-.nav-right {
-    display: flex;
-    align-items: center;
-    gap: 16px;
+.nav-brand img {
+    display: block;
 }
 .nav-account {
-    font-size: 0.78rem;
-    color: #5e6a7d;
-    text-align: right;
-    line-height: 1.4;
+    font-size: 0.8rem;
+    color: #8895aa;
+    text-align: center;
+    line-height: 1.45;
+    padding-top: 4px;
 }
 
 /* --- 4. Auth Screen --- */
@@ -83,14 +49,14 @@ div[data-testid="stSidebar"] { display: none !important; }
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 60vh;
+    min-height: 55vh;
     padding: 40px 20px;
 }
 .auth-card {
     background: linear-gradient(180deg, rgba(16,22,38,0.98), rgba(12,17,30,0.99));
-    border: 1px solid rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.07);
     border-radius: 20px;
-    padding: 48px 40px 36px;
+    padding: 44px 40px 36px;
     max-width: 440px;
     width: 100%;
     text-align: center;
@@ -99,36 +65,20 @@ div[data-testid="stSidebar"] { display: none !important; }
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
-    margin-bottom: 28px;
+    margin-bottom: 24px;
 }
-.auth-logo-icon {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #00b2a9, #00948d);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-weight: 700;
-    font-size: 18px;
-}
-.auth-logo-text {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #e8edf7;
-    letter-spacing: -0.02em;
+.auth-logo img {
+    display: block;
 }
 .auth-title {
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 600;
-    color: #e0e5ef;
+    color: #edf0f7;
     margin: 0 0 10px 0;
 }
 .auth-subtitle {
-    font-size: 0.88rem;
-    color: #6b7a90;
+    font-size: 0.9rem;
+    color: #9aa5b8;
     margin-bottom: 28px;
     line-height: 1.6;
 }
@@ -137,17 +87,17 @@ div[data-testid="stSidebar"] { display: none !important; }
     font-size: 2.2rem;
     font-weight: 700;
     letter-spacing: 0.16em;
-    color: #e8edf7;
-    background: rgba(0,178,169,0.06);
-    border: 1px solid rgba(0,178,169,0.18);
+    color: #f0f3fa;
+    background: rgba(0,178,169,0.07);
+    border: 1px solid rgba(0,178,169,0.2);
     border-radius: 14px;
     padding: 18px 24px;
-    margin: 16px 0 12px;
+    margin: 16px 0 14px;
     user-select: all;
 }
 .auth-instruction {
-    font-size: 0.82rem;
-    color: #6b7a90;
+    font-size: 0.85rem;
+    color: #9aa5b8;
     margin: 8px 0 0;
     line-height: 1.55;
 }
@@ -157,19 +107,19 @@ div[data-testid="stSidebar"] { display: none !important; }
     text-underline-offset: 2px;
 }
 .auth-footer {
-    font-size: 0.76rem;
-    color: #3d4a5e;
+    font-size: 0.78rem;
+    color: #5e6a7d;
     margin-top: 20px;
     text-align: center;
 }
 
 /* --- 5. Section Headers --- */
 .section-header {
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #3d4a5e;
+    color: #6b7a90;
     margin-bottom: 10px;
     padding-left: 2px;
 }
@@ -191,7 +141,7 @@ div[data-testid="stSidebar"] { display: none !important; }
     transition: opacity 0.2s;
 }
 .pipeline-stage.zero {
-    opacity: 0.25;
+    opacity: 0.3;
 }
 .pipeline-count {
     font-size: 1.35rem;
@@ -204,20 +154,20 @@ div[data-testid="stSidebar"] { display: none !important; }
     text-transform: uppercase;
     letter-spacing: 0.03em;
     margin-top: 3px;
-    opacity: 0.65;
+    opacity: 0.8;
     line-height: 1.3;
 }
 
 /* --- 7. KPI Metric Cards --- */
 div[data-testid="stMetric"] {
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.06);
     padding: 18px 20px;
     border-radius: 14px;
 }
 div[data-testid="stMetric"] label {
-    color: #4a5568 !important;
-    font-size: 0.68rem !important;
+    color: #8895aa !important;
+    font-size: 0.7rem !important;
     font-weight: 600 !important;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -225,32 +175,31 @@ div[data-testid="stMetric"] label {
 div[data-testid="stMetric"] [data-testid="stMetricValue"] {
     font-size: 1.65rem !important;
     font-weight: 700 !important;
-    color: #e0e5ef !important;
+    color: #edf0f7 !important;
 }
 
 /* --- 8. Filter Bar --- */
 div[data-testid="stTextInput"] input,
 div[data-baseweb="select"] > div {
     background-color: rgba(16,22,38,0.8) !important;
-    border-color: rgba(255,255,255,0.06) !important;
-    color: #d0d7e3 !important;
+    border-color: rgba(255,255,255,0.08) !important;
+    color: #c8d0de !important;
     border-radius: 10px !important;
     font-size: 0.85rem !important;
 }
 div[data-testid="stTextInput"] input::placeholder {
-    color: #3d4a5e !important;
+    color: #5e6a7d !important;
 }
 div[data-baseweb="select"] [data-testid="stMarkdownContainer"] {
-    color: #d0d7e3;
+    color: #c8d0de;
 }
-/* Dropdown menu dark theme */
 div[data-baseweb="popover"] {
     background: #111827 !important;
     border: 1px solid rgba(255,255,255,0.08) !important;
     border-radius: 10px !important;
 }
 div[data-baseweb="popover"] li {
-    color: #d0d7e3 !important;
+    color: #c8d0de !important;
 }
 div[data-baseweb="popover"] li:hover {
     background: rgba(0,178,169,0.08) !important;
@@ -259,7 +208,7 @@ div[data-baseweb="popover"] li:hover {
 /* --- 9. Contact Cards --- */
 .contact-card {
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.06);
     border-radius: 14px;
     padding: 18px 22px;
     margin-bottom: 6px;
@@ -278,18 +227,18 @@ div[data-baseweb="popover"] li:hover {
 .contact-card-left {
     display: flex;
     flex-direction: column;
-    gap: 1px;
+    gap: 2px;
     min-width: 0;
 }
 .contact-card-client {
-    font-size: 0.95rem;
+    font-size: 0.96rem;
     font-weight: 650;
-    color: #e0e5ef;
+    color: #edf0f7;
     letter-spacing: -0.01em;
 }
 .contact-card-name {
-    font-size: 0.8rem;
-    color: #5e6a7d;
+    font-size: 0.82rem;
+    color: #8895aa;
 }
 .contact-card-right {
     display: flex;
@@ -298,16 +247,16 @@ div[data-baseweb="popover"] li:hover {
     flex-shrink: 0;
 }
 .contact-card-subject {
-    font-size: 0.84rem;
-    color: #8090a7;
+    font-size: 0.86rem;
+    color: #a0aec0;
     margin-bottom: 6px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .contact-card-next {
-    font-size: 0.76rem;
-    color: #4a5e78;
+    font-size: 0.78rem;
+    color: #7a8da3;
     font-style: italic;
 }
 
@@ -320,25 +269,25 @@ div[data-baseweb="popover"] li:hover {
     white-space: nowrap;
 }
 .days-urgent {
-    color: #ff9a76;
-    background: rgba(255,154,118,0.1);
-    border: 1px solid rgba(255,154,118,0.18);
+    color: #ffab8f;
+    background: rgba(255,171,143,0.12);
+    border: 1px solid rgba(255,171,143,0.2);
 }
 .days-normal {
-    color: #5e6a7d;
-    background: rgba(94,106,125,0.08);
-    border: 1px solid rgba(94,106,125,0.12);
+    color: #8895aa;
+    background: rgba(136,149,170,0.08);
+    border: 1px solid rgba(136,149,170,0.12);
 }
 
 /* Detail expand */
 .card-details {
     margin-top: 10px;
     padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.03);
+    border-top: 1px solid rgba(255,255,255,0.04);
 }
 .card-details summary {
-    font-size: 0.72rem;
-    color: #4a5e78;
+    font-size: 0.74rem;
+    color: #7a8da3;
     cursor: pointer;
     outline: none;
     padding: 2px 0;
@@ -350,7 +299,7 @@ div[data-baseweb="popover"] li:hover {
     font-weight: 600;
 }
 .card-details[open] summary::before {
-    content: '- ';
+    content: '\2212  ';
 }
 .card-details summary:hover {
     color: #5ec6c1;
@@ -361,21 +310,21 @@ div[data-baseweb="popover"] li:hover {
 .card-detail-row {
     display: flex;
     gap: 8px;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     margin-bottom: 5px;
     line-height: 1.5;
 }
 .card-detail-label {
-    color: #3d4a5e;
+    color: #6b7a90;
     min-width: 85px;
     font-weight: 500;
 }
 .card-detail-value {
-    color: #8090a7;
+    color: #a0aec0;
 }
 .card-detail-notes {
-    font-size: 0.78rem;
-    color: #5e6a7d;
+    font-size: 0.8rem;
+    color: #8895aa;
     line-height: 1.55;
     margin-top: 6px;
 }
@@ -400,17 +349,17 @@ div[data-baseweb="popover"] li:hover {
 .empty-state-icon {
     font-size: 2rem;
     margin-bottom: 14px;
-    opacity: 0.4;
+    opacity: 0.5;
 }
 .empty-state-title {
     font-size: 1rem;
     font-weight: 600;
-    color: #8090a7;
+    color: #a0aec0;
     margin-bottom: 8px;
 }
 .empty-state-desc {
-    font-size: 0.84rem;
-    color: #4a5e78;
+    font-size: 0.86rem;
+    color: #7a8da3;
     max-width: 380px;
     margin: 0 auto;
     line-height: 1.55;
@@ -419,8 +368,8 @@ div[data-baseweb="popover"] li:hover {
 /* --- 12. Notices --- */
 .sample-notice {
     text-align: center;
-    font-size: 0.76rem;
-    color: #3d4a5e;
+    font-size: 0.78rem;
+    color: #6b7a90;
     padding: 6px 0;
     font-style: italic;
 }
@@ -428,20 +377,11 @@ div[data-baseweb="popover"] li:hover {
 /* --- 13. Dividers --- */
 .subtle-divider {
     border: none;
-    border-top: 1px solid rgba(255,255,255,0.04);
-    margin: 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin: 0 0 6px 0;
 }
 
-/* --- 14. Settings row --- */
-.settings-row {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-bottom: 4px;
-}
-
-/* --- 15. Streamlit component overrides --- */
+/* --- 14. Streamlit component overrides --- */
 
 /* Button styling */
 .stButton > button {
@@ -462,16 +402,16 @@ div[data-baseweb="popover"] li:hover {
 }
 .stButton > button[kind="secondary"] {
     background: rgba(16,22,38,0.6) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    color: #6b7a90 !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    color: #a0aec0 !important;
 }
 
 /* Download button */
 .stDownloadButton > button {
     border-radius: 10px !important;
     background: rgba(16,22,38,0.6) !important;
-    border: 1px solid rgba(255,255,255,0.06) !important;
-    color: #6b7a90 !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    color: #a0aec0 !important;
     font-size: 0.78rem !important;
 }
 
@@ -482,9 +422,9 @@ div[data-testid="stExpander"] {
     border-radius: 10px !important;
 }
 div[data-testid="stExpander"] summary span {
-    font-size: 0.78rem !important;
+    font-size: 0.8rem !important;
     font-weight: 500 !important;
-    color: #5e6a7d !important;
+    color: #8895aa !important;
 }
 
 /* Spinner */

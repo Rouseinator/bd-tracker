@@ -142,6 +142,17 @@ def load_css() -> None:
     st.markdown(f"<style>{css_text}</style>", unsafe_allow_html=True)
 
 
+def _load_logo_b64() -> str:
+    """Load the Forethought logo SVG as a base64 data URI."""
+    import base64
+    logo_path = Path(__file__).parent / "logo.svg"
+    if logo_path.exists():
+        svg_bytes = logo_path.read_bytes()
+        b64 = base64.b64encode(svg_bytes).decode("utf-8")
+        return f"data:image/svg+xml;base64,{b64}"
+    return ""
+
+
 # ─── Session state ────────────────────────────────────────────────────────────
 
 def init_state() -> None:
@@ -500,15 +511,12 @@ def apply_filters(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _brand_html() -> str:
-    """Forethought brand mark as inline HTML."""
-    return (
-        '<div class="nav-brand">'
-        '<div class="nav-brand-icon">F</div>'
-        '<div class="nav-brand-text">Forethought'
-        '<span class="accent">Outcomes</span></div>'
-        '</div>'
-    )
+def _logo_img(height: str = "28px") -> str:
+    """Return an <img> tag for the Forethought logo, or empty string if missing."""
+    src = _load_logo_b64()
+    if src:
+        return f'<img src="{src}" alt="Forethought Outcomes" style="height:{height};">'
+    return '<span style="font-weight:700;color:#e8edf7;">Forethought</span>'
 
 
 def render_auth_screen() -> None:
@@ -516,15 +524,14 @@ def render_auth_screen() -> None:
     _, center, _ = st.columns([1.3, 1.8, 1.3])
 
     with center:
+        logo = _logo_img("36px")
+
         if not st.session_state.device_flow:
             st.markdown(
                 f"""
                 <div class="auth-outer">
                 <div class="auth-card">
-                    <div class="auth-logo">
-                        <div class="auth-logo-icon">F</div>
-                        <div class="auth-logo-text">Forethought</div>
-                    </div>
+                    <div class="auth-logo">{logo}</div>
                     <div class="auth-title">BD Tracker</div>
                     <div class="auth-subtitle">
                         Connect your Microsoft account to sync Outlook
@@ -560,10 +567,7 @@ def render_auth_screen() -> None:
                 f"""
                 <div class="auth-outer">
                 <div class="auth-card">
-                    <div class="auth-logo">
-                        <div class="auth-logo-icon">F</div>
-                        <div class="auth-logo-text">Forethought</div>
-                    </div>
+                    <div class="auth-logo">{logo}</div>
                     <div class="auth-title">Enter the code below</div>
                     <div class="auth-subtitle">
                         Go to the Microsoft login page, enter this code,
@@ -607,7 +611,10 @@ def render_top_nav() -> None:
     left, mid, right = st.columns([2.5, 3, 2])
 
     with left:
-        st.markdown(_brand_html(), unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="nav-brand">{_logo_img("26px")}</div>',
+            unsafe_allow_html=True,
+        )
 
     with mid:
         st.markdown(
