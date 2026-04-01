@@ -1,4 +1,4 @@
-streamlit
-msal
-requests
-pandas
+streamlit>=1.33.0
+msal>=1.28.0
+pandas>=2.0.0
+requests>=2.31.0
