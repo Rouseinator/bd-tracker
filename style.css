@@ -329,6 +329,43 @@ div[data-baseweb="popover"] li:hover {
     margin-top: 6px;
 }
 
+/* AI insight section in details */
+.card-detail-ai {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(94,198,193,0.08);
+}
+.card-detail-ai .card-detail-label {
+    color: #5ec6c1;
+    min-width: 95px;
+}
+
+/* Excluded (not BD relevant) card */
+.contact-card-excluded {
+    opacity: 0.5;
+    border-color: rgba(255,255,255,0.03);
+}
+.contact-card-excluded:hover {
+    opacity: 0.7;
+}
+
+/* Confidence bar */
+.confidence-bar {
+    width: 60px;
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+.confidence-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
 /* --- 10. Pill / Badge --- */
 .pill {
     display: inline-block;

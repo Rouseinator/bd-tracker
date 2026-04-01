@@ -1,12 +1,14 @@
 """
 BD Tracker -- Business Development Command Centre
 Connects to Outlook via Microsoft Graph, tracks client outreach,
-and presents a clean pipeline dashboard.
+and uses AI to classify BD relevance and pipeline stage.
 """
 
 from __future__ import annotations
 
 import html
+import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -15,6 +17,8 @@ import msal
 import pandas as pd
 import requests
 import streamlit as st
+
+log = logging.getLogger(__name__)
 
 # ─── Page config (must be first Streamlit call) ──────────────────────────────
 
@@ -30,12 +34,18 @@ st.set_page_config(
 try:
     CLIENT_ID = st.secrets["CLIENT_ID"]
 except Exception:
-    CLIENT_ID = "74a06330-3a89-4cf8-871d-9d783c483d9d"  # fallback for local dev
+    CLIENT_ID = "74a06330-3a89-4cf8-871d-9d783c483d9d"
 
 try:
     TENANT_ID = st.secrets["TENANT_ID"]
 except Exception:
-    TENANT_ID = "a14b16a4-0cbe-435c-a893-78e3e95b09c3"  # fallback for local dev
+    TENANT_ID = "a14b16a4-0cbe-435c-a893-78e3e95b09c3"
+
+try:
+    ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
+except Exception:
+    ANTHROPIC_API_KEY = ""
+
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Mail.Read"]
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -54,7 +64,7 @@ STAGE_ORDER = [
     "Closed / Not Now",
 ]
 
-STAGE_STYLES: dict[str, tuple[str, str, str]] = {
+STAGE_STYLES = {
     "Outreach Sent":     ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
     "Follow-up Needed":  ("#ffe4a8", "rgba(255,212,121,0.10)", "rgba(255,212,121,0.22)"),
     "Engaged":           ("#bbffe3", "rgba(126,240,194,0.10)", "rgba(126,240,194,0.22)"),
@@ -64,6 +74,20 @@ STAGE_STYLES: dict[str, tuple[str, str, str]] = {
     "Proposal Sent":     ("#ffe0ba", "rgba(255,173,90,0.11)",  "rgba(255,173,90,0.22)"),
     "Commissioned":      ("#d6ffd8", "rgba(117,243,128,0.11)", "rgba(117,243,128,0.22)"),
     "Closed / Not Now":  ("#dde4f1", "rgba(155,166,190,0.12)", "rgba(155,166,190,0.22)"),
+}
+
+CONTACT_TYPE_STYLES = {
+    "current_client":    ("#5ec6c1", "rgba(94,198,193,0.10)", "rgba(94,198,193,0.20)"),
+    "prospective_client":("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.20)"),
+    "former_client":     ("#c8b8e0", "rgba(200,184,224,0.10)", "rgba(200,184,224,0.20)"),
+    "not_relevant":      ("#8090a7", "rgba(128,144,167,0.08)", "rgba(128,144,167,0.15)"),
+}
+
+CONTACT_TYPE_LABELS = {
+    "current_client": "Client",
+    "prospective_client": "Prospect",
+    "former_client": "Former",
+    "not_relevant": "Not BD",
 }
 
 SAMPLE_DATA = [
@@ -78,6 +102,11 @@ SAMPLE_DATA = [
         "latest_subject": "Following up on market mix modelling support",
         "next_step": "Send a brief note with two available times for next week.",
         "notes": "Initial outreach landed well but no reply since the first note.",
+        "contact_type": "prospective_client",
+        "bd_relevant": True,
+        "ai_confidence": 0.88,
+        "ai_reasoning": "Thread discusses potential consulting engagement around market mix modelling. Contact is external and conversation is exploratory.",
+        "ai_stage_reasoning": "Outbound message sent with no reply for 14 days. Needs follow-up.",
     },
     {
         "client_name": "North Coast Health",
@@ -90,6 +119,11 @@ SAMPLE_DATA = [
         "latest_subject": "Confirmed: coffee next Tuesday",
         "next_step": "Prepare a one-page discussion agenda before the meeting.",
         "notes": "Catch-up locked in for Tuesday morning.",
+        "contact_type": "current_client",
+        "bd_relevant": True,
+        "ai_confidence": 0.92,
+        "ai_reasoning": "Ongoing relationship with an existing client. Meeting confirmed for relationship development.",
+        "ai_stage_reasoning": "Meeting explicitly confirmed with a specific date.",
     },
     {
         "client_name": "Southbank Capital",
@@ -102,6 +136,11 @@ SAMPLE_DATA = [
         "latest_subject": "Re: Scope & fee estimate for brand strategy review",
         "next_step": "Follow up on proposal feedback and timing.",
         "notes": "Proposal sent Thursday. Awaiting feedback from their GM.",
+        "contact_type": "prospective_client",
+        "bd_relevant": True,
+        "ai_confidence": 0.95,
+        "ai_reasoning": "Active proposal discussion with scope and fee language. Clear BD opportunity.",
+        "ai_stage_reasoning": "Proposal with fee estimate has been sent. Awaiting client response.",
     },
     {
         "client_name": "Horizon Education",
@@ -114,6 +153,11 @@ SAMPLE_DATA = [
         "latest_subject": "Re: Great chat at the conference",
         "next_step": "Keep momentum with a relevant next touchpoint.",
         "notes": "Good initial exchange after meeting at the industry conference last week.",
+        "contact_type": "prospective_client",
+        "bd_relevant": True,
+        "ai_confidence": 0.78,
+        "ai_reasoning": "Post-conference networking exchange. Early-stage prospecting — could develop into a BD opportunity.",
+        "ai_stage_reasoning": "Two-way conversation is active. No specific meeting or proposal yet.",
     },
     {
         "client_name": "Pacific Retail Group",
@@ -123,9 +167,14 @@ SAMPLE_DATA = [
         "stage": "Outreach Sent",
         "last_touch": "2026-03-31T08:45:00Z",
         "days_since_touch": 1,
-        "latest_subject": "Intro — Forethought x Pacific Retail",
+        "latest_subject": "Intro \u2014 Forethought x Pacific Retail",
         "next_step": "Monitor for reply or send a follow-up in a few days.",
         "notes": "Cold outreach sent. No response yet.",
+        "contact_type": "prospective_client",
+        "bd_relevant": True,
+        "ai_confidence": 0.82,
+        "ai_reasoning": "Initial outreach email to a new external contact. BD intent is clear from the subject line.",
+        "ai_stage_reasoning": "Single outbound message with no reply. Early outreach stage.",
     },
 ]
 
@@ -133,7 +182,6 @@ SAMPLE_DATA = [
 # ─── CSS loader ───────────────────────────────────────────────────────────────
 
 def load_css() -> None:
-    """Load external stylesheet and inject into the page."""
     css_path = Path(__file__).parent / "style.css"
     if css_path.exists():
         css_text = css_path.read_text(encoding="utf-8")
@@ -143,7 +191,6 @@ def load_css() -> None:
 
 
 def _load_logo_b64() -> str:
-    """Load the Forethought logo SVG as a base64 data URI."""
     import base64
     logo_path = Path(__file__).parent / "logo.svg"
     if logo_path.exists():
@@ -156,9 +203,10 @@ def _load_logo_b64() -> str:
 # ─── Session state ────────────────────────────────────────────────────────────
 
 def init_state() -> None:
-    defaults: dict = {
+    defaults = {
         "access_token": None,
         "tracker_df": pd.DataFrame(),
+        "raw_messages": [],
         "authenticated": False,
         "device_flow": None,
         "auth_message": "",
@@ -166,7 +214,9 @@ def init_state() -> None:
         "auth_result": None,
         "account_label": "",
         "last_sync": None,
+        "last_classify": None,
         "internal_domains": ", ".join(DEFAULT_INTERNAL_DOMAINS),
+        "show_excluded": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -217,12 +267,14 @@ def sign_out() -> None:
     st.session_state.authenticated = False
     st.session_state.account_label = ""
     st.session_state.tracker_df = pd.DataFrame()
+    st.session_state.raw_messages = []
     st.session_state.last_sync = None
+    st.session_state.last_classify = None
 
 
 # ─── Microsoft Graph helpers ─────────────────────────────────────────────────
 
-def _graph_get(path: str, params: dict | None = None) -> dict:
+def _graph_get(path: str, params: dict = None) -> dict:
     token = st.session_state.access_token
     if not token:
         raise RuntimeError("No access token. Please sign in first.")
@@ -235,21 +287,21 @@ def _graph_get(path: str, params: dict | None = None) -> dict:
     return resp.json()
 
 
-def _email_addr(obj: dict | None) -> str | None:
+def _email_addr(obj) -> str:
     try:
-        return obj["emailAddress"]["address"].lower()  # type: ignore[index]
+        return obj["emailAddress"]["address"].lower()
     except Exception:
         return None
 
 
-def _email_name(obj: dict | None) -> str:
+def _email_name(obj) -> str:
     try:
-        return obj["emailAddress"]["name"]  # type: ignore[index]
+        return obj["emailAddress"]["name"]
     except Exception:
         return ""
 
 
-def _domain_to_client(email: str | None) -> str:
+def _domain_to_client(email) -> str:
     if not email or "@" not in email:
         return "Unknown"
     domain = email.split("@", 1)[1]
@@ -257,7 +309,7 @@ def _domain_to_client(email: str | None) -> str:
     return " ".join(part.capitalize() for part in base.replace("-", " ").split())
 
 
-def _is_internal(email: str | None, internal_domains: list[str]) -> bool:
+def _is_internal(email, internal_domains) -> bool:
     if not email:
         return True
     lower = email.lower()
@@ -266,7 +318,7 @@ def _is_internal(email: str | None, internal_domains: list[str]) -> bool:
 
 # ─── Email fetching & normalisation ──────────────────────────────────────────
 
-def fetch_messages(limit: int = 100) -> tuple[list[dict], list[dict]]:
+def fetch_messages(limit: int = 100):
     select = (
         "id,subject,from,toRecipients,receivedDateTime,"
         "sentDateTime,conversationId,bodyPreview"
@@ -282,10 +334,8 @@ def fetch_messages(limit: int = 100) -> tuple[list[dict], list[dict]]:
     return inbox, sent
 
 
-def normalise_messages(
-    messages: list[dict], box: str, internal_domains: list[str],
-) -> list[dict]:
-    rows: list[dict] = []
+def normalise_messages(messages, box, internal_domains):
+    rows = []
     for m in messages:
         if box == "inbox":
             counterparty = _email_addr(m.get("from", {}))
@@ -327,9 +377,9 @@ def normalise_messages(
     return rows
 
 
-# ─── Stage inference ──────────────────────────────────────────────────────────
+# ─── Stage inference (rule-based fallback) ────────────────────────────────────
 
-def _derive_days(date_str: str | None) -> int | None:
+def _derive_days(date_str):
     if not date_str:
         return None
     dt = pd.to_datetime(date_str, utc=True, errors="coerce")
@@ -338,9 +388,7 @@ def _derive_days(date_str: str | None) -> int | None:
     return max(0, (datetime.now(timezone.utc) - dt.to_pydatetime()).days)
 
 
-def _infer_stage(
-    last_out: str | None, last_in: str | None, subject: str, preview: str,
-) -> str:
+def _infer_stage_rules(last_out, last_in, subject, preview):
     text = f"{subject or ''} {preview or ''}".lower()
     if any(w in text for w in ["proposal", "scope", "pricing", "quote", "fee"]):
         if any(w in text for w in ["attached", "proposal attached", "send through"]):
@@ -361,7 +409,7 @@ def _infer_stage(
     return "Engaged"
 
 
-def _suggest_next_step(stage: str) -> str:
+def _suggest_next_step(stage):
     return {
         "Outreach Sent":     "Monitor for reply or send a follow-up in a few days.",
         "Follow-up Needed":  "Send a short follow-up and propose a next step.",
@@ -377,20 +425,22 @@ def _suggest_next_step(stage: str) -> str:
 
 # ─── Tracker builder ─────────────────────────────────────────────────────────
 
-def build_tracker(messages: list[dict], owner: str) -> pd.DataFrame:
+def build_tracker(messages, owner):
     cols = [
         "client_name", "contact_name", "counterparty_email", "owner",
         "stage", "last_touch", "days_since_touch", "latest_subject",
-        "next_step", "notes",
+        "next_step", "notes", "thread_data",
+        "contact_type", "bd_relevant", "ai_confidence",
+        "ai_reasoning", "ai_stage_reasoning",
     ]
     if not messages:
         return pd.DataFrame(columns=cols)
 
-    grouped: dict[str, list[dict]] = {}
+    grouped = {}
     for msg in messages:
         grouped.setdefault(msg["counterparty_email"], []).append(msg)
 
-    rows: list[dict] = []
+    rows = []
     for email, group in grouped.items():
         group.sort(
             key=lambda x: pd.to_datetime(x["datetime"], utc=True, errors="coerce"),
@@ -400,10 +450,21 @@ def build_tracker(messages: list[dict], owner: str) -> pd.DataFrame:
         latest = group[-1]
         last_in = inbound[-1]["datetime"] if inbound else None
         last_out = outbound[-1]["datetime"] if outbound else None
-        stage = _infer_stage(
+        stage = _infer_stage_rules(
             last_out, last_in,
             latest.get("subject", ""), latest.get("preview", ""),
         )
+
+        # Build thread summary for AI classification
+        thread_data = []
+        for m in group:
+            thread_data.append({
+                "direction": m["direction"],
+                "date": m.get("datetime", ""),
+                "subject": m.get("subject", ""),
+                "preview": (m.get("preview") or "")[:500],
+            })
+
         rows.append({
             "client_name": _domain_to_client(email),
             "contact_name": latest.get("contact_name", ""),
@@ -415,6 +476,12 @@ def build_tracker(messages: list[dict], owner: str) -> pd.DataFrame:
             "latest_subject": latest.get("subject", ""),
             "next_step": _suggest_next_step(stage),
             "notes": latest.get("preview", ""),
+            "thread_data": json.dumps(thread_data),
+            "contact_type": "",
+            "bd_relevant": None,
+            "ai_confidence": None,
+            "ai_reasoning": "",
+            "ai_stage_reasoning": "",
         })
 
     df = pd.DataFrame(rows)
@@ -425,9 +492,234 @@ def build_tracker(messages: list[dict], owner: str) -> pd.DataFrame:
     )
 
 
+# ─── AI Classification (Anthropic Claude) ────────────────────────────────────
+
+AI_RELEVANCE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a consulting firm.
+Your job is to classify whether an email thread is relevant to CLIENT BUSINESS DEVELOPMENT.
+
+The tracker should ONLY include:
+- Current clients (organisations that have commissioned or are actively working with Forethought)
+- Prospective clients (organisations that Forethought is reaching out to or engaging with about potential work)
+- Former/dormant clients (organisations that previously engaged Forethought but are currently inactive)
+
+The tracker should EXCLUDE:
+- Suppliers, vendors, or service providers to Forethought
+- Fieldwork houses, research panel providers, or data suppliers
+- Recruitment contacts, job applicants, or staffing agencies
+- Admin or operational contacts (IT support, office management, subscriptions)
+- Industry bodies, associations, or event organisers (unless they are also a client)
+- Personal contacts or social messages
+- Newsletters, automated notifications, or marketing emails
+- Internal colleagues at Forethought
+
+Respond with ONLY a JSON object, no other text."""
+
+AI_STAGE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a consulting firm.
+Your job is to classify the BD pipeline stage of an email thread that has already been confirmed as relevant to client business development.
+
+The stages are (in order of progression):
+1. Outreach Sent - Initial contact made, no substantive reply yet
+2. Follow-up Needed - Previous outreach went unanswered for several days
+3. Engaged - Two-way conversation active, but no meeting or proposal yet
+4. Meeting Proposed - A meeting has been suggested but not yet confirmed
+5. Meeting Booked - A meeting or call is confirmed with a date/time
+6. Proposal Requested - The client has asked for or discussed a proposal, scope, or pricing
+7. Proposal Sent - A proposal, scope document, or fee estimate has been sent to the client
+8. Commissioned - The client has agreed to proceed or the work has been confirmed
+9. Closed / Not Now - The opportunity has been declined or deferred
+
+Consider the FULL context: direction of messages, timing, language, and thread progression.
+Do not rely only on keywords — consider what the conversation as a whole indicates.
+
+Respond with ONLY a JSON object, no other text."""
+
+
+def _call_claude(system_prompt, user_prompt):
+    """Call Anthropic Messages API and return the text response."""
+    if not ANTHROPIC_API_KEY:
+        return None
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 512,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_prompt}],
+        },
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        log.warning("Claude API error %s: %s", resp.status_code, resp.text[:200])
+        return None
+
+    data = resp.json()
+    text = data.get("content", [{}])[0].get("text", "")
+    return text
+
+
+def _parse_json_response(text):
+    """Extract JSON from a Claude response, handling markdown fences."""
+    if not text:
+        return None
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        text = "\n".join(lines).strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        log.warning("Failed to parse JSON from Claude: %s", text[:200])
+        return None
+
+
+def classify_relevance(contact_name, email, domain, thread_data_json):
+    """Classify a single contact's BD relevance using Claude."""
+    thread_data = json.loads(thread_data_json) if isinstance(thread_data_json, str) else thread_data_json
+
+    thread_summary = ""
+    for msg in thread_data:
+        direction = "SENT" if msg["direction"] == "outbound" else "RECEIVED"
+        thread_summary += f"[{direction}] {msg['date']}\n"
+        thread_summary += f"Subject: {msg['subject']}\n"
+        thread_summary += f"Preview: {msg['preview']}\n\n"
+
+    user_prompt = f"""Classify this email thread for BD relevance.
+
+Contact: {contact_name}
+Email: {email}
+Domain: {domain}
+
+Thread ({len(thread_data)} messages):
+{thread_summary}
+
+Respond with this exact JSON structure:
+{{
+  "bd_relevant": true or false,
+  "contact_type": "current_client" | "prospective_client" | "former_client" | "not_relevant",
+  "confidence": 0.0 to 1.0,
+  "reasoning": "One or two sentences explaining why this thread is or is not relevant to client BD."
+}}"""
+
+    text = _call_claude(AI_RELEVANCE_SYSTEM, user_prompt)
+    result = _parse_json_response(text)
+    if not result:
+        return None
+    return {
+        "bd_relevant": result.get("bd_relevant", False),
+        "contact_type": result.get("contact_type", "not_relevant"),
+        "ai_confidence": result.get("confidence", 0.0),
+        "ai_reasoning": result.get("reasoning", ""),
+    }
+
+
+def classify_stage(contact_name, email, stage_rules, thread_data_json):
+    """Classify the BD pipeline stage using Claude."""
+    thread_data = json.loads(thread_data_json) if isinstance(thread_data_json, str) else thread_data_json
+
+    thread_summary = ""
+    for msg in thread_data:
+        direction = "SENT" if msg["direction"] == "outbound" else "RECEIVED"
+        thread_summary += f"[{direction}] {msg['date']}\n"
+        thread_summary += f"Subject: {msg['subject']}\n"
+        thread_summary += f"Preview: {msg['preview']}\n\n"
+
+    stages_str = ", ".join(STAGE_ORDER)
+
+    user_prompt = f"""Classify the BD pipeline stage for this thread.
+
+Contact: {contact_name}
+Email: {email}
+Rule-based stage guess: {stage_rules}
+
+Thread ({len(thread_data)} messages):
+{thread_summary}
+
+Available stages: {stages_str}
+
+Respond with this exact JSON structure:
+{{
+  "stage": "one of the stages listed above",
+  "confidence": 0.0 to 1.0,
+  "reasoning": "One or two sentences explaining why this stage was chosen.",
+  "next_step": "A specific, actionable next step for this thread."
+}}"""
+
+    text = _call_claude(AI_STAGE_SYSTEM, user_prompt)
+    result = _parse_json_response(text)
+    if not result:
+        return None
+    return {
+        "stage": result.get("stage", stage_rules),
+        "ai_confidence": result.get("confidence", 0.0),
+        "ai_stage_reasoning": result.get("reasoning", ""),
+        "next_step": result.get("next_step", ""),
+    }
+
+
+def run_ai_classification(df, progress_callback=None):
+    """Run AI classification on all contacts in the tracker DataFrame."""
+    if df.empty or not ANTHROPIC_API_KEY:
+        return df
+
+    total = len(df)
+    results = []
+
+    for idx, row in df.iterrows():
+        i = len(results) + 1
+        if progress_callback:
+            progress_callback(i / total, f"Classifying {row['contact_name'] or row['counterparty_email']} ({i}/{total})")
+
+        domain = row["counterparty_email"].split("@", 1)[1] if "@" in str(row.get("counterparty_email", "")) else ""
+
+        # Step 1: BD relevance
+        rel = classify_relevance(
+            row.get("contact_name", ""),
+            row.get("counterparty_email", ""),
+            domain,
+            row.get("thread_data", "[]"),
+        )
+
+        if rel:
+            df.at[idx, "bd_relevant"] = rel["bd_relevant"]
+            df.at[idx, "contact_type"] = rel["contact_type"]
+            df.at[idx, "ai_confidence"] = rel["ai_confidence"]
+            df.at[idx, "ai_reasoning"] = rel["ai_reasoning"]
+
+            # Step 2: Stage classification (only if BD relevant)
+            if rel["bd_relevant"]:
+                stage_result = classify_stage(
+                    row.get("contact_name", ""),
+                    row.get("counterparty_email", ""),
+                    row.get("stage", ""),
+                    row.get("thread_data", "[]"),
+                )
+                if stage_result:
+                    df.at[idx, "stage"] = stage_result["stage"]
+                    df.at[idx, "ai_stage_reasoning"] = stage_result["ai_stage_reasoning"]
+                    df.at[idx, "next_step"] = stage_result["next_step"]
+                    # Use the average of both confidence scores
+                    stage_conf = stage_result.get("ai_confidence", 0)
+                    df.at[idx, "ai_confidence"] = round(
+                        (rel["ai_confidence"] + stage_conf) / 2, 2
+                    )
+        else:
+            # API failed for this contact — leave as unclassified
+            df.at[idx, "bd_relevant"] = None
+            df.at[idx, "contact_type"] = ""
+
+    return df
+
+
 # ─── Sync action ─────────────────────────────────────────────────────────────
 
-def sync_outlook() -> None:
+def sync_outlook():
     """Pull messages from Outlook and rebuild the tracker."""
     internal = [
         d.strip().lower()
@@ -439,22 +731,23 @@ def sync_outlook() -> None:
         normalise_messages(inbox_raw, "inbox", internal)
         + normalise_messages(sent_raw, "sent", internal)
     )
+    st.session_state.raw_messages = messages
     owner = (
         st.session_state.account_label.split(" (")[0]
         if st.session_state.account_label else "Me"
     )
     st.session_state.tracker_df = build_tracker(messages, owner)
     st.session_state.last_sync = datetime.now(timezone.utc)
+    st.session_state.last_classify = None
 
 
 # ─── HTML helpers ─────────────────────────────────────────────────────────────
 
-def _esc(text: str | None) -> str:
-    """HTML-escape a string."""
+def _esc(text):
     return html.escape(str(text)) if text else ""
 
 
-def _pill_html(stage: str) -> str:
+def _pill_html(stage):
     fg, bg, border = STAGE_STYLES.get(
         stage, ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
     )
@@ -464,7 +757,32 @@ def _pill_html(stage: str) -> str:
     )
 
 
-def _days_html(days: int | None) -> str:
+def _contact_type_pill(contact_type):
+    label = CONTACT_TYPE_LABELS.get(contact_type, "")
+    if not label:
+        return ""
+    fg, bg, border = CONTACT_TYPE_STYLES.get(
+        contact_type, ("#8090a7", "rgba(128,144,167,0.08)", "rgba(128,144,167,0.15)"),
+    )
+    return (
+        f'<span class="pill" style="color:{fg};background:{bg};'
+        f'border-color:{border};font-size:0.62rem;">{_esc(label)}</span>'
+    )
+
+
+def _confidence_bar(confidence):
+    if confidence is None:
+        return ""
+    pct = int(confidence * 100)
+    color = "#5ec6c1" if confidence >= 0.7 else "#ffe4a8" if confidence >= 0.4 else "#ffa07a"
+    return (
+        f'<div class="confidence-bar">'
+        f'<div class="confidence-fill" style="width:{pct}%;background:{color};"></div>'
+        f'</div>'
+    )
+
+
+def _days_html(days):
     if days is None:
         return ""
     cls = "days-badge days-urgent" if days >= FOLLOW_UP_DAYS else "days-badge days-normal"
@@ -474,13 +792,17 @@ def _days_html(days: int | None) -> str:
 
 # ─── Filter logic ─────────────────────────────────────────────────────────────
 
-def apply_filters(
-    df: pd.DataFrame, search: str, stage: str, sort: str,
-) -> pd.DataFrame:
+def apply_filters(df, search, stage, sort, show_excluded):
     if df.empty:
         return df
 
     filtered = df.copy()
+
+    # Filter out non-BD contacts unless show_excluded is on
+    if not show_excluded and "bd_relevant" in filtered.columns:
+        has_ai = filtered["bd_relevant"].notna()
+        if has_ai.any():
+            filtered = filtered[~has_ai | (filtered["bd_relevant"] == True)]  # noqa: E712
 
     if search:
         mask = filtered.astype(str).apply(
@@ -492,15 +814,12 @@ def apply_filters(
         filtered = filtered[filtered["stage"] == stage]
 
     sort_map = {
-        "Days since touch (newest)": ("days_since_touch", True),
-        "Days since touch (oldest)": ("days_since_touch", False),
+        "Days since touch (newest)": ("days_since_touch", False),
+        "Days since touch (oldest)": ("days_since_touch", True),
         "Client A\u2013Z": ("client_name", True),
         "Stage": ("stage", True),
     }
-    col, asc = sort_map.get(sort, ("days_since_touch", True))
-    # For "newest" we actually want descending days (14 before 1)
-    if sort == "Days since touch (newest)":
-        asc = False
+    col, asc = sort_map.get(sort, ("days_since_touch", False))
     filtered = filtered.sort_values(col, ascending=asc, na_position="last")
 
     return filtered
@@ -511,16 +830,14 @@ def apply_filters(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def _logo_img(height: str = "28px") -> str:
-    """Return an <img> tag for the Forethought logo, or empty string if missing."""
+def _logo_img(height="28px"):
     src = _load_logo_b64()
     if src:
         return f'<img src="{src}" alt="Forethought Outcomes" style="height:{height};">'
     return '<span style="font-weight:700;color:#e8edf7;">Forethought</span>'
 
 
-def render_auth_screen() -> None:
-    """Centered authentication card with device-code flow."""
+def render_auth_screen():
     _, center, _ = st.columns([1.3, 1.8, 1.3])
 
     with center:
@@ -606,8 +923,7 @@ def render_auth_screen() -> None:
             )
 
 
-def render_top_nav() -> None:
-    """Top navigation bar: brand left, sync + sign out right."""
+def render_top_nav():
     left, mid, right = st.columns([2.5, 3, 2])
 
     with left:
@@ -624,7 +940,7 @@ def render_top_nav() -> None:
         )
 
     with right:
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
             if st.button("Sync Outlook", type="primary", use_container_width=True):
                 with st.spinner("Syncing\u2026"):
@@ -634,13 +950,33 @@ def render_top_nav() -> None:
                     except Exception as exc:
                         st.error(str(exc))
         with c2:
+            has_data = not st.session_state.tracker_df.empty
+            ai_ready = bool(ANTHROPIC_API_KEY) and has_data
+            if st.button(
+                "Classify AI",
+                type="primary" if ai_ready else "secondary",
+                use_container_width=True,
+                disabled=not ai_ready,
+            ):
+                progress = st.progress(0, text="Starting AI classification\u2026")
+                try:
+                    st.session_state.tracker_df = run_ai_classification(
+                        st.session_state.tracker_df,
+                        progress_callback=lambda p, t: progress.progress(p, text=t),
+                    )
+                    st.session_state.last_classify = datetime.now(timezone.utc)
+                    progress.empty()
+                    st.rerun()
+                except Exception as exc:
+                    progress.empty()
+                    st.error(f"AI classification error: {exc}")
+        with c3:
             if st.button("Sign out", use_container_width=True):
                 sign_out()
                 st.rerun()
 
     st.markdown('<hr class="subtle-divider">', unsafe_allow_html=True)
 
-    # Settings as a collapsible row below nav (not crammed into nav)
     with st.expander("Settings"):
         new_domains = st.text_input(
             "Internal domains (comma-separated)",
@@ -651,14 +987,12 @@ def render_top_nav() -> None:
             st.session_state.internal_domains = new_domains
 
 
-def render_pipeline_bar(df: pd.DataFrame) -> None:
-    """Visual pipeline summary showing count per stage."""
+def render_pipeline_bar(df):
     st.markdown(
         '<div class="section-header">Pipeline</div>', unsafe_allow_html=True,
     )
 
-    # Build all stage blocks as a single HTML string for consistent rendering
-    blocks: list[str] = []
+    blocks = []
     for stage in STAGE_ORDER:
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
@@ -677,8 +1011,7 @@ def render_pipeline_bar(df: pd.DataFrame) -> None:
     )
 
 
-def render_kpi_row(df: pd.DataFrame) -> None:
-    """Four key metric cards."""
+def render_kpi_row(df):
     total = len(df)
     follow_up = int((df["stage"] == "Follow-up Needed").sum()) if not df.empty else 0
     meetings = int(
@@ -695,9 +1028,8 @@ def render_kpi_row(df: pd.DataFrame) -> None:
     c4.metric("Proposals", proposals)
 
 
-def render_filter_bar(df: pd.DataFrame) -> tuple[str, str, str]:
-    """Inline filter controls above the contact cards."""
-    c1, c2, c3 = st.columns([3, 1.5, 1.5])
+def render_filter_bar(df):
+    c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
     with c1:
         search = st.text_input(
             "Search",
@@ -720,11 +1052,14 @@ def render_filter_bar(df: pd.DataFrame) -> tuple[str, str, str]:
             ],
             label_visibility="collapsed",
         )
-    return search, stage, sort
+    with c4:
+        show_excluded = st.checkbox("Show excluded", value=st.session_state.show_excluded)
+        st.session_state.show_excluded = show_excluded
+
+    return search, stage, sort, show_excluded
 
 
-def render_contact_cards(df: pd.DataFrame) -> None:
-    """Render each contact as an expandable card."""
+def render_contact_cards(df):
     if df.empty:
         st.markdown(
             """
@@ -747,19 +1082,58 @@ def render_contact_cards(df: pd.DataFrame) -> None:
         touch_dt = pd.to_datetime(row.get("last_touch"), utc=True, errors="coerce")
         date_str = touch_dt.strftime("%d %b %Y") if pd.notna(touch_dt) else "\u2014"
 
-        # Truncate notes for the detail view
+        contact_type = row.get("contact_type", "")
+        bd_relevant = row.get("bd_relevant")
+        confidence = row.get("ai_confidence")
+        reasoning = row.get("ai_reasoning", "")
+        stage_reasoning = row.get("ai_stage_reasoning", "")
+
         notes_text = str(row.get("notes", "")) if row.get("notes") else ""
         if len(notes_text) > 300:
             notes_text = notes_text[:300] + "\u2026"
 
+        # Build AI insight section for details
+        ai_section = ""
+        if contact_type or reasoning:
+            ai_section = '<div class="card-detail-ai">'
+            if reasoning:
+                ai_section += (
+                    f'<div class="card-detail-row">'
+                    f'<span class="card-detail-label">AI Relevance</span>'
+                    f'<span class="card-detail-value">{_esc(reasoning)}</span>'
+                    f'</div>'
+                )
+            if stage_reasoning:
+                ai_section += (
+                    f'<div class="card-detail-row">'
+                    f'<span class="card-detail-label">AI Stage</span>'
+                    f'<span class="card-detail-value">{_esc(stage_reasoning)}</span>'
+                    f'</div>'
+                )
+            if confidence is not None:
+                pct = int(confidence * 100)
+                ai_section += (
+                    f'<div class="card-detail-row">'
+                    f'<span class="card-detail-label">Confidence</span>'
+                    f'<span class="card-detail-value">{pct}%</span>'
+                    f'</div>'
+                )
+            ai_section += '</div>'
+
+        # Dim the card if not BD relevant
+        card_class = "contact-card"
+        if bd_relevant is False:
+            card_class += " contact-card-excluded"
+
         card_html = f"""
-        <div class="contact-card">
+        <div class="{card_class}">
             <div class="contact-card-header">
                 <div class="contact-card-left">
                     <span class="contact-card-client">{_esc(row.get('client_name', ''))}</span>
                     <span class="contact-card-name">{_esc(row.get('contact_name', ''))}</span>
                 </div>
                 <div class="contact-card-right">
+                    {_contact_type_pill(contact_type)}
                     {_pill_html(stage)}
                     {_days_html(days)}
                 </div>
@@ -783,19 +1157,20 @@ def render_contact_cards(df: pd.DataFrame) -> None:
                     <span class="card-detail-value">{date_str}</span>
                 </div>
                 <div class="card-detail-notes">{_esc(notes_text)}</div>
+                {ai_section}
             </details>
         </div>
         """
         st.markdown(card_html, unsafe_allow_html=True)
 
 
-def render_csv_export(df: pd.DataFrame) -> None:
-    """Download button for CSV export."""
+def render_csv_export(df):
     if df.empty:
         return
     _, right = st.columns([5, 1])
     with right:
-        csv_bytes = df.to_csv(index=False).encode("utf-8")
+        export_df = df.drop(columns=["thread_data"], errors="ignore")
+        csv_bytes = export_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             "Export CSV",
             data=csv_bytes,
@@ -809,58 +1184,75 @@ def render_csv_export(df: pd.DataFrame) -> None:
 #  MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def main() -> None:
+def main():
     init_state()
     load_css()
 
-    # ── Auth gate ──
     if not st.session_state.authenticated:
         render_auth_screen()
         return
 
-    # ── Authenticated dashboard ──
     render_top_nav()
 
-    # Determine working data
     df = st.session_state.tracker_df
     using_sample = False
     if df.empty:
         df = pd.DataFrame(SAMPLE_DATA)
         using_sample = True
 
-    render_pipeline_bar(df)
-    render_kpi_row(df)
+    # If AI has classified, only count BD-relevant in pipeline/KPIs
+    display_df = df.copy()
+    if not using_sample and "bd_relevant" in display_df.columns:
+        has_ai = display_df["bd_relevant"].notna()
+        if has_ai.any():
+            display_df_filtered = display_df[~has_ai | (display_df["bd_relevant"] == True)]  # noqa: E712
+        else:
+            display_df_filtered = display_df
+    else:
+        display_df_filtered = display_df
+
+    render_pipeline_bar(display_df_filtered)
+    render_kpi_row(display_df_filtered)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # Sync prompt if using sample data
     if using_sample:
         st.markdown(
             '<div class="sample-notice">'
-            'Showing sample data \u2014 click "Sync Outlook" above to load your real activity.'
+            'Showing sample data \u2014 click "Sync Outlook" to load your real activity, '
+            'then "Classify AI" to run intelligent classification.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+    elif not ANTHROPIC_API_KEY:
+        st.markdown(
+            '<div class="sample-notice">'
+            'Add ANTHROPIC_API_KEY to Streamlit secrets to enable AI classification.'
             '</div>',
             unsafe_allow_html=True,
         )
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    # Filters
-    search, stage, sort = render_filter_bar(df)
-    filtered = apply_filters(df, search, stage, sort)
+    search, stage, sort, show_excluded = render_filter_bar(df)
+    filtered = apply_filters(df, search, stage, sort, show_excluded)
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    # Contact cards
     render_contact_cards(filtered)
 
-    # Export
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     render_csv_export(filtered)
 
-    # Last sync timestamp
+    # Status footer
+    parts = []
     if st.session_state.last_sync:
-        sync_time = st.session_state.last_sync.strftime("%d %b %Y %H:%M UTC")
+        parts.append(f"Synced: {st.session_state.last_sync.strftime('%d %b %H:%M UTC')}")
+    if st.session_state.last_classify:
+        parts.append(f"Classified: {st.session_state.last_classify.strftime('%d %b %H:%M UTC')}")
+    if parts:
         st.markdown(
-            f'<div class="sample-notice">Last synced: {sync_time}</div>',
+            f'<div class="sample-notice">{" \u00b7 ".join(parts)}</div>',
             unsafe_allow_html=True,
         )
 
