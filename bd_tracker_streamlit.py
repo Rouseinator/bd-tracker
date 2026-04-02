@@ -221,6 +221,12 @@ def init_state() -> None:
         if key not in st.session_state:
             st.session_state[key] = value
 
+    # Ensure all default internal domains are always present
+    current = st.session_state.internal_domains.lower()
+    for d in DEFAULT_INTERNAL_DOMAINS:
+        if d not in current:
+            st.session_state.internal_domains += f", {d}"
+
 
 # ─── MSAL / Auth ─────────────────────────────────────────────────────────────
 
