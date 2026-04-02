@@ -1297,8 +1297,8 @@ def render_pipeline_bar(df):
         zero_class = " zero" if count == 0 else ""
         blocks.append(
             f'<div class="pipeline-stage{zero_class}" '
-            f'style="border-color:{border};background:{bg};" '
-            f'title="{definition}">'
+            f'style="border-color:{border};background:{bg};">'
+            f'<div class="pipeline-tooltip">{definition}</div>'
             f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
             f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
             f'</div>'
