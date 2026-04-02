@@ -1197,13 +1197,15 @@ def render_top_nav():
         )
 
     with right:
-        c1, c2, c3, c4 = st.columns([2.5, 2.5, 2.5, 1.5])
+        # Extract just the display name (no email)
+        account_name = st.session_state.account_label.split(" (")[0] if st.session_state.account_label else ""
+        c1, c2, c3, c4 = st.columns([1.5, 2.5, 2.5, 1.5])
         with c1:
-            st.markdown(
-                f'<div class="nav-account">'
-                f'{_esc(st.session_state.account_label)}</div>',
-                unsafe_allow_html=True,
-            )
+            if account_name:
+                st.markdown(
+                    f'<div class="nav-account">{_esc(account_name)}</div>',
+                    unsafe_allow_html=True,
+                )
         with c2:
             if st.button("Sync Outlook", type="primary", use_container_width=True):
                 with st.spinner("Syncing\u2026"):
