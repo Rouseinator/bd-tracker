@@ -1392,26 +1392,43 @@ def render_pipeline_bar(df):
         unsafe_allow_html=True,
     )
 
-    # Pipeline stage cards (visual only)
-    blocks = []
-    for stage in STAGE_ORDER:
+    # Clickable pipeline stage buttons (styled as cards via CSS)
+    pipe_cols = st.columns(len(STAGE_ORDER))
+    for i, stage in enumerate(STAGE_ORDER):
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
-        fg, bg, border = STAGE_STYLES[stage]
         active = st.session_state.get("pipeline_stage_filter") == stage
-        active_style = "outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
-        zero_class = " zero" if count == 0 and not active else ""
-        blocks.append(
-            f'<div class="pipeline-stage{zero_class}" '
-            f'style="border-color:{border};background:{bg};{active_style}">'
-            f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
-            f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
-            f'</div>'
-        )
-
-    st.markdown(
-        f'<div class="pipeline-bar">{"".join(blocks)}</div>',
-        unsafe_allow_html=True,
-    )
+        label = f"{count}\n{stage.upper()}"
+        with pipe_cols[i]:
+            if st.button(label, key=f"pipe_{stage}", use_container_width=True):
+                if active:
+                    st.session_state.pipeline_stage_filter = None
+                else:
+                    st.session_state.pipeline_stage_filter = stage
+                st.rerun()
+            # Inject per-stage color styling
+            fg, bg, border = STAGE_STYLES[stage]
+            active_outline = f"outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
+            opacity = "opacity:0.3;" if count == 0 and not active else ""
+            st.markdown(
+                f'<style>'
+                f'[data-testid="stColumn"]:nth-child({i+1}) button[kind="secondary"][data-testid="stBaseButton-secondary"] {{'
+                f'  background:{bg} !important;'
+                f'  border:1px solid {border} !important;'
+                f'  border-radius:10px !important;'
+                f'  color:{fg} !important;'
+                f'  padding:12px 4px 10px !important;'
+                f'  min-height:60px !important;'
+                f'  white-space:pre-line !important;'
+                f'  font-size:0.58rem !important;'
+                f'  font-weight:600 !important;'
+                f'  text-transform:uppercase !important;'
+                f'  letter-spacing:0.03em !important;'
+                f'  line-height:1.8 !important;'
+                f'  {active_outline}{opacity}'
+                f'}}'
+                f'</style>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_kpi_row(df):
