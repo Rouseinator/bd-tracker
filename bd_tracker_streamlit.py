@@ -50,7 +50,7 @@ except Exception:
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPES = ["Mail.Read"]
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
-DEFAULT_INTERNAL_DOMAINS = ["forethought.com.au", "forethought.com"]
+DEFAULT_INTERNAL_DOMAINS = ["forethought.com.au", "forethought.com", "brandcomms.ai"]
 FOLLOW_UP_DAYS = 5
 
 STAGE_ORDER = [
