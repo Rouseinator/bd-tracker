@@ -198,6 +198,71 @@ def _load_logo_b64() -> str:
     return ""
 
 
+# ─── Classification memory (persistence) ─────────────────────────────────────
+
+_MEMORY_FILE = Path(__file__).parent / "classification_memory.json"
+
+
+def _load_memory() -> dict:
+    """Load saved classifications from disk."""
+    if _MEMORY_FILE.exists():
+        try:
+            return json.loads(_MEMORY_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_memory(memory: dict) -> None:
+    """Save classifications to disk."""
+    try:
+        _MEMORY_FILE.write_text(json.dumps(memory, indent=2, default=str), encoding="utf-8")
+    except OSError as exc:
+        log.warning("Could not save classification memory: %s", exc)
+
+
+def _apply_memory(df) -> pd.DataFrame:
+    """Apply saved classifications to a DataFrame after sync."""
+    memory = _load_memory()
+    if not memory:
+        return df
+    for idx, row in df.iterrows():
+        email = row.get("counterparty_email", "")
+        if email in memory:
+            saved = memory[email]
+            df.at[idx, "bd_relevant"] = saved.get("bd_relevant")
+            df.at[idx, "contact_type"] = saved.get("contact_type", "")
+            df.at[idx, "stage"] = saved.get("stage", "Pending")
+            df.at[idx, "ai_confidence"] = saved.get("ai_confidence")
+            df.at[idx, "ai_reasoning"] = saved.get("ai_reasoning", "")
+            df.at[idx, "ai_stage_reasoning"] = saved.get("ai_stage_reasoning", "")
+            df.at[idx, "next_step"] = saved.get("next_step", "")
+    return df
+
+
+def _update_memory(df) -> None:
+    """Save current classifications to memory file."""
+    memory = _load_memory()
+    for _, row in df.iterrows():
+        email = row.get("counterparty_email", "")
+        if not email:
+            continue
+        bd_relevant = row.get("bd_relevant")
+        # Only save contacts that have been classified (not None/Pending)
+        if bd_relevant is not None:
+            memory[email] = {
+                "bd_relevant": bool(bd_relevant) if bd_relevant is not None else None,
+                "contact_type": row.get("contact_type", ""),
+                "stage": row.get("stage", ""),
+                "ai_confidence": row.get("ai_confidence"),
+                "ai_reasoning": row.get("ai_reasoning", ""),
+                "ai_stage_reasoning": row.get("ai_stage_reasoning", ""),
+                "next_step": row.get("next_step", ""),
+                "classified_at": datetime.now(timezone.utc).isoformat(),
+            }
+    _save_memory(memory)
+
+
 # ─── Session state ────────────────────────────────────────────────────────────
 
 def init_state() -> None:
@@ -679,21 +744,45 @@ def _parse_json_response(text):
 
 AI_BATCH_SYSTEM = AI_RELEVANCE_SYSTEM + """
 
-For contacts that ARE bd_relevant, also classify their pipeline stage.
+For contacts that ARE bd_relevant, also classify their pipeline stage. Use the STRICT rules below. You must follow these rules exactly — do not use your own judgment to override them.
 
-The stages are:
-1. Outreach - Initial contact or re-engagement. No substantive two-way conversation yet.
-2. In Conversation - Active two-way engagement. Catch-ups, coffees, meetings, relationship building. No formal proposal or scope yet.
-3. Proposal - A proposal, scope, fee estimate, or pricing discussion is underway.
-4. Commissioned - The client has explicitly agreed to proceed. Clear commissioning language.
-5. Active Project - Ongoing delivery of commissioned work. Status updates, deliverables.
-6. Dormant - Thread has gone quiet. Previous engagement but no recent activity.
-7. Closed - Opportunity was explicitly declined, lost, or deferred.
+=== STAGE CLASSIFICATION RULES ===
 
-IMPORTANT:
-- A "coffee", "catch up", "chat", or "meeting" is "In Conversation", not Proposal.
-- "Proposal" requires actual discussion of scope, fees, deliverables.
-- "Commissioned" requires explicit agreement to proceed.
+1. OUTREACH
+   USE WHEN: A message has been sent TO the contact but they have NOT replied, OR this is a first-time/re-engagement contact with no two-way exchange yet.
+   EXAMPLES: cold email sent, intro email sent, LinkedIn follow-up sent, re-engagement after a long gap with no reply.
+   NEVER USE WHEN: The contact has replied with substantive content.
+
+2. IN CONVERSATION
+   USE WHEN: There is a two-way exchange (both parties have sent messages) AND the discussion is about relationship building, general catch-ups, exploring needs, or meetings — but NO mention of scope, fees, proposals, or deliverables.
+   EXAMPLES: "Let's grab a coffee", "Great to meet you at the conference", scheduling a catch-up, discussing potential needs at a high level, "I'd love to hear more about what you do."
+   NEVER USE WHEN: There is any mention of a proposal, scope, pricing, fee estimate, or formal deliverables.
+
+3. PROPOSAL
+   USE WHEN: The email thread contains ANY of these keywords or concepts: "proposal", "scope", "fee estimate", "quote", "pricing", "budget", "cost", "deliverables", "put something together", "send through a proposal", "scope of work", "terms", "how much would it cost". This includes both the client asking for a proposal AND Forethought having sent one.
+   EXAMPLES: "Can you send a proposal?", "Here's our scope and fee estimate", "What would this cost?", "I've attached the proposal", "Let me put something together for you."
+   ALWAYS USE WHEN: Any discussion of money, pricing, scope documents, or formal project outlines — even if informal.
+
+4. COMMISSIONED
+   USE WHEN: The client has explicitly agreed to proceed. Look for: "Let's go ahead", "We'd like to proceed", "Approved", "PO attached", "Contract signed", "Please start", "We've got budget approval."
+   NEVER USE WHEN: The proposal has been sent but no explicit confirmation of acceptance.
+
+5. ACTIVE PROJECT
+   USE WHEN: Work is underway. The emails discuss deliverables being worked on, status updates, data being shared for analysis, draft reports, fieldwork progress, presentation scheduling.
+   EXAMPLES: "Here's the latest data", "Draft report attached", "Fieldwork update", "Presentation next Thursday."
+   NEVER USE WHEN: The project hasn't started yet — use Commissioned instead.
+
+6. DORMANT
+   USE WHEN: There was previous engagement but the most recent message is more than 21 days old with no reply, OR the conversation visibly stalled (one party stopped responding).
+   NEVER USE WHEN: The last message is less than 21 days old — use the appropriate active stage instead.
+
+7. CLOSED
+   USE WHEN: The opportunity was explicitly declined or lost. Look for: "We've decided to go another direction", "Not proceeding", "Budget was cut", "Maybe next year."
+   NEVER USE WHEN: The thread is simply quiet — that's Dormant, not Closed.
+
+=== END RULES ===
+
+Apply these rules mechanically based on the email content. The same email content must always produce the same stage classification.
 
 Respond with ONLY a JSON array, no other text."""
 
@@ -762,15 +851,22 @@ def run_ai_classification(df, progress_callback=None):
     if df.empty or not ANTHROPIC_API_KEY:
         return df
 
-    # Collect contacts that need classification (skip auto-excluded)
+    # Collect contacts that need classification
+    # Skip: auto-excluded AND already classified (from memory)
     to_classify = []
     for idx, row in df.iterrows():
+        # Skip auto-excluded
         if row.get("bd_relevant") is False and str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+            continue
+        # Skip already classified (restored from memory or previous run)
+        if row.get("bd_relevant") is not None:
             continue
         to_classify.append((idx, row))
 
     total = len(to_classify)
     if total == 0:
+        # Nothing new to classify — save memory and return
+        _update_memory(df)
         return df
 
     # Process in batches
@@ -816,6 +912,9 @@ def run_ai_classification(df, progress_callback=None):
             batch_errors.append(f"Batch {batch_num}: API returned no usable results")
             for idx, row in batch:
                 df.at[idx, "ai_reasoning"] = f"Batch {batch_num} failed — contact left unclassified."
+
+    # Save all classifications to memory for future sessions
+    _update_memory(df)
 
     # Surface any errors via session state so the UI can show them
     if batch_errors:
@@ -905,9 +1004,15 @@ def sync_outlook():
         st.session_state.account_label.split(" (")[0]
         if st.session_state.account_label else "Me"
     )
-    st.session_state.tracker_df = build_tracker(messages, owner)
+    df = build_tracker(messages, owner)
+    # Restore any previous classifications from memory
+    df = _apply_memory(df)
+    st.session_state.tracker_df = df
     st.session_state.last_sync = datetime.now(timezone.utc)
-    st.session_state.last_classify = None
+    # If memory restored some classifications, keep last_classify set
+    has_classified = "bd_relevant" in df.columns and df["bd_relevant"].notna().any()
+    if not has_classified:
+        st.session_state.last_classify = None
     st.session_state.pipeline_summary = ""
 
 
@@ -1148,6 +1253,26 @@ def render_top_nav():
         )
         if new_domains != st.session_state.internal_domains:
             st.session_state.internal_domains = new_domains
+
+        if st.button("Clear classification memory", help="Force all contacts to be re-classified on next Classify AI run"):
+            _save_memory({})
+            # Reset all classifications in current DataFrame
+            df = st.session_state.tracker_df
+            if not df.empty:
+                for idx in df.index:
+                    if str(df.at[idx, "ai_reasoning"]).startswith("Auto-excluded"):
+                        continue
+                    df.at[idx, "bd_relevant"] = None
+                    df.at[idx, "contact_type"] = ""
+                    df.at[idx, "stage"] = "Pending"
+                    df.at[idx, "ai_confidence"] = None
+                    df.at[idx, "ai_reasoning"] = ""
+                    df.at[idx, "ai_stage_reasoning"] = ""
+                    df.at[idx, "next_step"] = "Run AI classification to determine stage."
+                st.session_state.tracker_df = df
+            st.session_state.last_classify = None
+            st.session_state.pipeline_summary = ""
+            st.success("Classification memory cleared. Click Classify AI to re-classify all contacts.")
 
 
 def render_pipeline_bar(df):
