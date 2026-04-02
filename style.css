@@ -161,9 +161,9 @@ div[data-testid="stSidebar"] { display: none !important; }
     color: #5ec6c1;
 }
 .stage-legend-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
     margin-top: 10px;
     padding: 14px 18px;
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
@@ -174,18 +174,40 @@ div[data-testid="stSidebar"] { display: none !important; }
     display: flex;
     gap: 8px;
     align-items: baseline;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    position: relative;
+}
+.stage-legend-item:last-child {
+    border-bottom: none;
+}
+.stage-legend-num {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #4a5568;
+    min-width: 16px;
+    text-align: center;
 }
 .stage-legend-name {
     font-size: 0.74rem;
     font-weight: 600;
     color: #edf0f7;
     white-space: nowrap;
-    min-width: 95px;
+    min-width: 110px;
 }
 .stage-legend-desc {
     font-size: 0.74rem;
     color: #a0aec0;
     line-height: 1.5;
+    flex: 1;
+}
+.stage-legend-arrow {
+    color: #4a5568;
+    font-size: 0.7rem;
+    position: absolute;
+    left: 4px;
+    bottom: -5px;
+    transform: rotate(90deg);
 }
 .pipeline-stage.zero {
     opacity: 0.3;
