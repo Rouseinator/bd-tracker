@@ -821,8 +821,14 @@ Write in a direct, professional tone. No bullet points — flowing prose only. D
 
     user_prompt = f"""Here is the current BD pipeline snapshot after AI classification:\n\n{snapshot}\n\nWrite a concise pipeline summary."""
 
-    text = _call_claude(system_prompt, user_prompt)
-    return text.strip() if text else ""
+    try:
+        text = _call_claude(system_prompt, user_prompt)
+        if text and text.strip():
+            return text.strip()
+        return "Pipeline summary could not be generated — AI returned an empty response."
+    except Exception as exc:
+        log.warning("Pipeline summary generation failed: %s", exc)
+        return f"Pipeline summary could not be generated — {exc}"
 
 
 # ─── Sync action ─────────────────────────────────────────────────────────────
