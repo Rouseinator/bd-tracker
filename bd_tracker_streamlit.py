@@ -1058,7 +1058,6 @@ def render_top_nav():
                 with st.spinner("Syncing\u2026"):
                     try:
                         sync_outlook()
-                        st.rerun()
                     except Exception as exc:
                         st.error(str(exc))
         with c3:
@@ -1082,14 +1081,12 @@ def render_top_nav():
                     )
                     st.session_state.last_classify = datetime.now(timezone.utc)
                     progress.empty()
-                    st.rerun()
                 except Exception as exc:
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
         with c4:
             if st.button("Sign out", use_container_width=True):
                 sign_out()
-                st.rerun()
 
     st.markdown('<hr class="subtle-divider">', unsafe_allow_html=True)
 
@@ -1167,8 +1164,7 @@ def render_filter_bar(df):
             label_visibility="collapsed",
         )
     with c4:
-        show_excluded = st.checkbox("Show excluded", value=st.session_state.show_excluded)
-        st.session_state.show_excluded = show_excluded
+        show_excluded = st.checkbox("Show excluded", key="show_excluded")
 
     return search, stage, sort, show_excluded
 
