@@ -36,12 +36,31 @@ div[data-testid="stSidebar"] { display: none !important; }
 .nav-brand img {
     display: block;
 }
-.nav-account {
-    font-size: 0.8rem;
+.nav-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+}
+.nav-user-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(0,178,169,0.15);
+    border: 1px solid rgba(0,178,169,0.3);
+    color: #5ec6c1;
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+}
+.nav-user-name {
+    font-size: 0.78rem;
     color: #a8b3c4;
-    text-align: center;
-    line-height: 1.45;
-    padding-top: 4px;
+    white-space: nowrap;
 }
 
 /* --- 4. Auth Screen --- */

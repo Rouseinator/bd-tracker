@@ -1202,8 +1202,12 @@ def render_top_nav():
         c1, c2, c3, c4 = st.columns([1.5, 2.5, 2.5, 1.5])
         with c1:
             if account_name:
+                initials = "".join(w[0].upper() for w in account_name.split() if w)[:2]
                 st.markdown(
-                    f'<div class="nav-account">{_esc(account_name)}</div>',
+                    f'<div class="nav-user">'
+                    f'<div class="nav-user-avatar">{initials}</div>'
+                    f'<span class="nav-user-name">{_esc(account_name)}</span>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
         with c2:
