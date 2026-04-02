@@ -388,6 +388,11 @@ div[data-baseweb="popover"] li:hover {
     gap: 10px;
     flex-shrink: 0;
 }
+.contact-card-date {
+    font-size: 0.72rem;
+    color: #6b7a8d;
+    white-space: nowrap;
+}
 .contact-card-subject {
     font-size: 0.86rem;
     color: #a0aec0;

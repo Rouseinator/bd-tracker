@@ -1558,6 +1558,7 @@ def render_contact_cards(df):
             f'{_contact_type_pill(contact_type)}'
             f'{_pill_html(stage)}'
             f'{_days_html(days)}'
+            f'<span class="contact-card-date">{date_str}</span>'
             f'</div>'
             f'</div>'
             f'<div class="contact-card-subject">{_esc(row.get("latest_subject", ""))}</div>'
