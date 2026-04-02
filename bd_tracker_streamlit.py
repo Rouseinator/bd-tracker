@@ -1433,7 +1433,7 @@ def render_filter_bar(df):
     today = datetime.now(MELB_TZ).date()
     default_from = today - timedelta(days=30)
 
-    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 2, 1])
+    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 2, 1.5])
     with c1:
         search = st.text_input(
             "Search",
