@@ -123,7 +123,7 @@ div[data-testid="stSidebar"] { display: none !important; }
 .pipeline-bar {
     display: flex;
     gap: 5px;
-    margin-bottom: 2px;
+    margin-bottom: 20px;
     overflow-x: auto;
 }
 .pipeline-stage {
@@ -134,26 +134,7 @@ div[data-testid="stSidebar"] { display: none !important; }
     padding: 12px 4px 10px;
     border: 1px solid transparent;
     transition: opacity 0.2s, transform 0.15s;
-}
-
-/* Subtle filter buttons under pipeline bar */
-.pipeline-bar ~ div [data-testid="stHorizontalBlock"] button {
-    background: transparent !important;
-    border: 1px solid rgba(255,255,255,0.05) !important;
-    color: #556070 !important;
-    font-size: 0.55rem !important;
-    font-weight: 500 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.04em !important;
-    padding: 2px 2px !important;
-    min-height: 0 !important;
-    height: 20px !important;
-    border-radius: 5px !important;
-}
-.pipeline-bar ~ div [data-testid="stHorizontalBlock"] button:hover {
-    background: rgba(94,198,193,0.08) !important;
-    border-color: rgba(94,198,193,0.25) !important;
-    color: #5ec6c1 !important;
+    border: none !important;
 }
 
 
