@@ -172,17 +172,18 @@ div[data-testid="stSidebar"] { display: none !important; }
     display: flex;
     flex-direction: column;
     gap: 0;
-    margin-top: 10px;
-    padding: 14px 18px;
+    margin-top: 8px;
+    padding: 10px 14px;
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 12px;
+    border-radius: 10px;
+    margin-bottom: 6px;
 }
 .stage-legend-item {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: baseline;
-    padding: 7px 0;
+    padding: 6px 0;
     border-bottom: 1px solid rgba(255,255,255,0.04);
     position: relative;
 }
@@ -193,15 +194,15 @@ div[data-testid="stSidebar"] { display: none !important; }
     font-size: 0.68rem;
     font-weight: 700;
     color: #4a5568;
-    min-width: 16px;
-    text-align: center;
+    min-width: 12px;
+    text-align: right;
 }
 .stage-legend-name {
     font-size: 0.74rem;
     font-weight: 600;
     color: #edf0f7;
     white-space: nowrap;
-    min-width: 110px;
+    min-width: 95px;
 }
 .stage-legend-desc {
     font-size: 0.74rem;
