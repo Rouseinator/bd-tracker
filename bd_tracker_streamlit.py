@@ -1392,43 +1392,30 @@ def render_pipeline_bar(df):
         unsafe_allow_html=True,
     )
 
-    # Clickable pipeline stage buttons (styled as cards via CSS)
-    pipe_cols = st.columns(len(STAGE_ORDER))
-    for i, stage in enumerate(STAGE_ORDER):
+    # Clickable pipeline stage cards using query params for navigation
+    active_stage = st.session_state.get("pipeline_stage_filter")
+    blocks = []
+    for stage in STAGE_ORDER:
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
-        active = st.session_state.get("pipeline_stage_filter") == stage
-        label = f"{count}\n{stage.upper()}"
-        with pipe_cols[i]:
-            if st.button(label, key=f"pipe_{stage}", use_container_width=True):
-                if active:
-                    st.session_state.pipeline_stage_filter = None
-                else:
-                    st.session_state.pipeline_stage_filter = stage
-                st.rerun()
-            # Inject per-stage color styling
-            fg, bg, border = STAGE_STYLES[stage]
-            active_outline = f"outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
-            opacity = "opacity:0.3;" if count == 0 and not active else ""
-            st.markdown(
-                f'<style>'
-                f'[data-testid="stColumn"]:nth-child({i+1}) button[kind="secondary"][data-testid="stBaseButton-secondary"] {{'
-                f'  background:{bg} !important;'
-                f'  border:1px solid {border} !important;'
-                f'  border-radius:10px !important;'
-                f'  color:{fg} !important;'
-                f'  padding:12px 4px 10px !important;'
-                f'  min-height:60px !important;'
-                f'  white-space:pre-line !important;'
-                f'  font-size:0.58rem !important;'
-                f'  font-weight:600 !important;'
-                f'  text-transform:uppercase !important;'
-                f'  letter-spacing:0.03em !important;'
-                f'  line-height:1.8 !important;'
-                f'  {active_outline}{opacity}'
-                f'}}'
-                f'</style>',
-                unsafe_allow_html=True,
-            )
+        fg, bg, border = STAGE_STYLES[stage]
+        is_active = active_stage == stage
+        active_style = "outline:2px solid #5ec6c1;outline-offset:2px;" if is_active else ""
+        zero_style = "opacity:0.3;" if count == 0 and not is_active else ""
+        # Toggle: if clicking the active stage, link clears the filter
+        href = "?stage=" + ("" if is_active else stage.replace(" ", "+"))
+        blocks.append(
+            f'<a href="{href}" class="pipeline-stage-link" style="text-decoration:none;flex:1;min-width:0;">'
+            f'<div class="pipeline-stage" '
+            f'style="border-color:{border};background:{bg};{active_style}{zero_style}">'
+            f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
+            f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
+            f'</div></a>'
+        )
+
+    st.markdown(
+        f'<div class="pipeline-bar">{"".join(blocks)}</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_kpi_row(df):
@@ -1642,6 +1629,17 @@ def render_pipeline_summary():
 def main():
     init_state()
     load_css()
+
+    # Read pipeline stage filter from query params (set by clicking stage cards)
+    qp = st.query_params
+    if "stage" in qp:
+        stage_val = qp["stage"]
+        if stage_val and stage_val in STAGE_ORDER:
+            st.session_state.pipeline_stage_filter = stage_val
+        else:
+            st.session_state.pipeline_stage_filter = None
+        # Clear query param so it doesn't persist on refresh
+        del qp["stage"]
 
     if not st.session_state.authenticated:
         render_auth_screen()
