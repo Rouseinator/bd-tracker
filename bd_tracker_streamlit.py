@@ -1434,14 +1434,9 @@ def render_kpi_row(df):
 
 def render_filter_bar(df):
     today = datetime.now(MELB_TZ).date()
-    date_options = [
-        "Last 7 days",
-        "Last 14 days",
-        "Last 30 days",
-        "Last 90 days",
-        "All time",
-    ]
-    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+    default_from = today - timedelta(days=30)
+
+    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 2, 1])
     with c1:
         search = st.text_input(
             "Search",
@@ -1465,27 +1460,26 @@ def render_filter_bar(df):
             label_visibility="collapsed",
         )
     with c4:
-        date_range = st.selectbox(
+        date_selection = st.date_input(
             "Date range",
-            date_options,
-            index=2,  # default "Last 30 days"
-            label_visibility="collapsed",
+            value=(default_from, today),
+            max_value=today,
             key="date_range",
+            label_visibility="collapsed",
         )
     with c5:
         show_excluded = st.checkbox("Show excluded", key="show_excluded")
 
-    # Convert selection to a from-date
-    range_map = {
-        "Last 7 days": 7,
-        "Last 14 days": 14,
-        "Last 30 days": 30,
-        "Last 90 days": 90,
-        "All time": None,
-    }
-    days_back = range_map.get(date_range)
-    date_from = (today - timedelta(days=days_back)) if days_back else None
-    date_to = today
+    # Extract from/to from the date picker (returns tuple when range selected)
+    if isinstance(date_selection, (list, tuple)):
+        if len(date_selection) == 2:
+            date_from, date_to = date_selection
+        elif len(date_selection) == 1:
+            date_from, date_to = date_selection[0], today
+        else:
+            date_from, date_to = None, today
+    else:
+        date_from, date_to = date_selection, today
 
     return search, stage, sort, show_excluded, date_from, date_to
 
