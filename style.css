@@ -135,8 +135,9 @@ div[data-testid="stSidebar"] { display: none !important; }
     border: 1px solid transparent;
     transition: opacity 0.2s, transform 0.15s;
     cursor: pointer;
+    pointer-events: none;
 }
-.pipeline-stage:hover {
+[data-testid="stColumn"]:has(.pipeline-stage):hover .pipeline-stage {
     transform: translateY(-2px);
     opacity: 1 !important;
 }
