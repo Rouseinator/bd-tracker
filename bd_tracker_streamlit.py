@@ -1193,12 +1193,8 @@ def render_top_nav():
     left, right = st.columns([3, 4])
 
     with left:
-        signed_in = f'<div class="nav-signed-in">Signed in as {_esc(account_name)}</div>' if account_name else ""
         st.markdown(
-            f'<div class="nav-brand-group">'
-            f'<div class="nav-brand">{_logo_img("26px")}</div>'
-            f'{signed_in}'
-            f'</div>',
+            f'<div class="nav-brand">{_logo_img("26px")}</div>',
             unsafe_allow_html=True,
         )
 
@@ -1240,6 +1236,11 @@ def render_top_nav():
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
         with c3:
+            if account_name:
+                st.markdown(
+                    f'<div class="nav-signed-in">{_esc(account_name)}</div>',
+                    unsafe_allow_html=True,
+                )
             if st.button("Sign out", use_container_width=True):
                 sign_out()
 
