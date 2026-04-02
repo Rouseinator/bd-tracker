@@ -1162,9 +1162,12 @@ def apply_filters(df, search, stage, sort, show_excluded, date_from=None, date_t
         # Always show contacts marked as relevant (True) or unclassified (None)
         filtered = filtered[filtered["bd_relevant"].fillna(True).astype(bool)]
 
-    # Date range filter on last_touch
+    # Date range filter on last_touch (convert UTC to Melbourne for accurate date comparison)
     if date_from and "last_touch" in filtered.columns:
-        filtered["_touch_date"] = pd.to_datetime(filtered["last_touch"], errors="coerce").dt.date
+        utc_dt = pd.to_datetime(filtered["last_touch"], utc=True, errors="coerce")
+        melb_dt = utc_dt.dt.tz_convert(MELB_TZ)
+        filtered["_touch_date"] = melb_dt.dt.date
+        filtered = filtered[filtered["_touch_date"].notna()]
         filtered = filtered[filtered["_touch_date"] >= date_from]
         if date_to:
             filtered = filtered[filtered["_touch_date"] <= date_to]
