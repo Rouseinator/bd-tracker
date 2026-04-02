@@ -654,15 +654,27 @@ def _parse_json_response(text):
     if not text:
         return None
     text = text.strip()
+    # Strip markdown code fences
     if text.startswith("```"):
         lines = text.split("\n")
         lines = [l for l in lines if not l.strip().startswith("```")]
         text = "\n".join(lines).strip()
+    # Try parsing as-is
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        log.warning("Failed to parse JSON from Claude: %s", text[:200])
-        return None
+        pass
+    # Try to find JSON array or object within the text
+    for start_char, end_char in [("[", "]"), ("{", "}")]:
+        start = text.find(start_char)
+        end = text.rfind(end_char)
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                continue
+    log.warning("Failed to parse JSON from Claude: %s", text[:300])
+    return None
 
 
 AI_BATCH_SYSTEM = AI_RELEVANCE_SYSTEM + """
@@ -735,8 +747,14 @@ For EACH contact, respond with a JSON object inside a JSON array. Each object mu
 
 Respond with ONLY the JSON array, no other text."""
 
-    text = _call_claude(AI_BATCH_SYSTEM, user_prompt, max_tokens=2048)
-    return _parse_json_response(text)
+    text = _call_claude(AI_BATCH_SYSTEM, user_prompt, max_tokens=4096)
+    if not text:
+        log.warning("Batch classification returned no text")
+        return None
+    result = _parse_json_response(text)
+    if result is None:
+        log.warning("Batch JSON parse failed. Raw response: %s", text[:500])
+    return result
 
 
 def run_ai_classification(df, progress_callback=None):
@@ -756,14 +774,15 @@ def run_ai_classification(df, progress_callback=None):
         return df
 
     # Process in batches
-    completed = 0
+    batch_errors = []
     for batch_start in range(0, total, BATCH_SIZE):
         batch = to_classify[batch_start:batch_start + BATCH_SIZE]
         batch_end = min(batch_start + BATCH_SIZE, total)
+        batch_num = batch_start // BATCH_SIZE + 1
 
         if progress_callback:
             names = ", ".join(r["contact_name"] or r["counterparty_email"] for _, r in batch)
-            progress_callback(batch_end / total, f"Classifying batch {batch_start // BATCH_SIZE + 1} ({batch_end}/{total}): {names[:80]}")
+            progress_callback(batch_end / total, f"Classifying batch {batch_num} ({batch_end}/{total}): {names[:80]}")
 
         # Pace between batches
         if batch_start > 0:
@@ -772,6 +791,7 @@ def run_ai_classification(df, progress_callback=None):
         results = _classify_batch(batch)
 
         if results and isinstance(results, list):
+            matched = 0
             for result in results:
                 ci = result.get("contact_index", 0) - 1
                 if 0 <= ci < len(batch):
@@ -789,12 +809,17 @@ def run_ai_classification(df, progress_callback=None):
                     else:
                         df.at[idx, "stage"] = "Not BD"
                         df.at[idx, "next_step"] = ""
+                    matched += 1
+            if matched == 0:
+                batch_errors.append(f"Batch {batch_num}: got {len(results)} results but none matched contact indices")
         else:
-            # Batch failed — mark contacts as unclassified
+            batch_errors.append(f"Batch {batch_num}: API returned no usable results")
             for idx, row in batch:
-                df.at[idx, "ai_reasoning"] = "Batch API call failed — contact left unclassified."
+                df.at[idx, "ai_reasoning"] = f"Batch {batch_num} failed — contact left unclassified."
 
-        completed = batch_end
+    # Surface any errors via session state so the UI can show them
+    if batch_errors:
+        st.session_state["_classify_errors"] = batch_errors
 
     return df
 
@@ -1102,6 +1127,10 @@ def render_top_nav():
                     )
                     st.session_state.last_classify = datetime.now(timezone.utc)
                     progress.empty()
+                    # Show any batch errors
+                    errors = st.session_state.pop("_classify_errors", [])
+                    if errors:
+                        st.warning("Some batches had issues: " + "; ".join(errors))
                 except Exception as exc:
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
