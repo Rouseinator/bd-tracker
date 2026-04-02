@@ -1433,7 +1433,15 @@ def render_kpi_row(df):
 
 
 def render_filter_bar(df):
-    c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 1])
+    today = datetime.now(MELB_TZ).date()
+    date_options = [
+        "Last 7 days",
+        "Last 14 days",
+        "Last 30 days",
+        "Last 90 days",
+        "All time",
+    ]
+    c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
     with c1:
         search = st.text_input(
             "Search",
@@ -1457,54 +1465,27 @@ def render_filter_bar(df):
             label_visibility="collapsed",
         )
     with c4:
+        date_range = st.selectbox(
+            "Date range",
+            date_options,
+            index=2,  # default "Last 30 days"
+            label_visibility="collapsed",
+            key="date_range",
+        )
+    with c5:
         show_excluded = st.checkbox("Show excluded", key="show_excluded")
 
-    # Date range filter row
-    dc1, dc2, dc3 = st.columns([1.5, 1.5, 4])
-    today = datetime.now(MELB_TZ).date()
-    with dc1:
-        date_from = st.date_input(
-            "From",
-            value=today - timedelta(days=30),
-            max_value=today,
-            key="date_from",
-        )
-    with dc2:
-        date_to = st.date_input(
-            "To",
-            value=today,
-            max_value=today,
-            key="date_to",
-        )
-    with dc3:
-        # Quick presets
-        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-        pc1, pc2, pc3, pc4, pc5 = st.columns(5)
-        with pc1:
-            if st.button("7 days", key="preset_7d", use_container_width=True):
-                st.session_state.date_from = today - timedelta(days=7)
-                st.session_state.date_to = today
-                st.rerun()
-        with pc2:
-            if st.button("14 days", key="preset_14d", use_container_width=True):
-                st.session_state.date_from = today - timedelta(days=14)
-                st.session_state.date_to = today
-                st.rerun()
-        with pc3:
-            if st.button("30 days", key="preset_30d", use_container_width=True):
-                st.session_state.date_from = today - timedelta(days=30)
-                st.session_state.date_to = today
-                st.rerun()
-        with pc4:
-            if st.button("90 days", key="preset_90d", use_container_width=True):
-                st.session_state.date_from = today - timedelta(days=90)
-                st.session_state.date_to = today
-                st.rerun()
-        with pc5:
-            if st.button("All time", key="preset_all", use_container_width=True):
-                st.session_state.date_from = today - timedelta(days=3650)
-                st.session_state.date_to = today
-                st.rerun()
+    # Convert selection to a from-date
+    range_map = {
+        "Last 7 days": 7,
+        "Last 14 days": 14,
+        "Last 30 days": 30,
+        "Last 90 days": 90,
+        "All time": None,
+    }
+    days_back = range_map.get(date_range)
+    date_from = (today - timedelta(days=days_back)) if days_back else None
+    date_to = today
 
     return search, stage, sort, show_excluded, date_from, date_to
 
