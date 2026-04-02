@@ -158,6 +158,36 @@ div[data-testid="stSidebar"] { display: none !important; }
     line-height: 1.3;
 }
 
+/* --- 6b. Pipeline Summary Card --- */
+.pipeline-summary {
+    background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
+    border: 1px solid rgba(94,198,193,0.12);
+    border-radius: 14px;
+    padding: 18px 22px;
+    margin: 12px 0 8px;
+}
+.pipeline-summary-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+.pipeline-summary-icon {
+    font-size: 1rem;
+}
+.pipeline-summary-title {
+    font-size: 0.74rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #5ec6c1;
+}
+.pipeline-summary-text {
+    font-size: 0.88rem;
+    color: #c8d0de;
+    line-height: 1.65;
+}
+
 /* --- 7. KPI Metric Cards --- */
 div[data-testid="stMetric"] {
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));

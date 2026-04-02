@@ -53,28 +53,24 @@ DEFAULT_INTERNAL_DOMAINS = ["forethought.com.au", "forethought.com"]
 FOLLOW_UP_DAYS = 5
 
 STAGE_ORDER = [
-    "Outreach Sent",
-    "Follow-up Needed",
-    "Engaged",
-    "Meeting Proposed",
-    "Meeting Booked",
-    "Proposal Requested",
-    "Proposal Sent",
+    "Outreach",
+    "In Conversation",
+    "Proposal",
     "Commissioned",
-    "Closed / Not Now",
+    "Active Project",
+    "Dormant",
+    "Closed",
 ]
 
 STAGE_STYLES = {
-    "Outreach Sent":     ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
-    "Follow-up Needed":  ("#ffe4a8", "rgba(255,212,121,0.10)", "rgba(255,212,121,0.22)"),
-    "Engaged":           ("#bbffe3", "rgba(126,240,194,0.10)", "rgba(126,240,194,0.22)"),
-    "Meeting Proposed":  ("#ddd1ff", "rgba(176,151,255,0.11)", "rgba(176,151,255,0.22)"),
-    "Meeting Booked":    ("#c3fbff", "rgba(93,224,230,0.12)",  "rgba(93,224,230,0.22)"),
-    "Proposal Requested":("#ffd0d0", "rgba(255,143,143,0.10)", "rgba(255,143,143,0.22)"),
-    "Proposal Sent":     ("#ffe0ba", "rgba(255,173,90,0.11)",  "rgba(255,173,90,0.22)"),
-    "Commissioned":      ("#d6ffd8", "rgba(117,243,128,0.11)", "rgba(117,243,128,0.22)"),
-    "Closed / Not Now":  ("#dde4f1", "rgba(155,166,190,0.12)", "rgba(155,166,190,0.22)"),
-    "Pending":           ("#8090a7", "rgba(128,144,167,0.08)", "rgba(128,144,167,0.15)"),
+    "Outreach":        ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
+    "In Conversation": ("#bbffe3", "rgba(126,240,194,0.10)", "rgba(126,240,194,0.22)"),
+    "Proposal":        ("#ffe0ba", "rgba(255,173,90,0.11)",  "rgba(255,173,90,0.22)"),
+    "Commissioned":    ("#d6ffd8", "rgba(117,243,128,0.11)", "rgba(117,243,128,0.22)"),
+    "Active Project":  ("#c3fbff", "rgba(93,224,230,0.12)",  "rgba(93,224,230,0.22)"),
+    "Dormant":         ("#ffe4a8", "rgba(255,212,121,0.10)", "rgba(255,212,121,0.22)"),
+    "Closed":          ("#dde4f1", "rgba(155,166,190,0.12)", "rgba(155,166,190,0.22)"),
+    "Pending":         ("#8090a7", "rgba(128,144,167,0.08)", "rgba(128,144,167,0.15)"),
 }
 
 CONTACT_TYPE_STYLES = {
@@ -218,6 +214,7 @@ def init_state() -> None:
         "last_classify": None,
         "internal_domains": ", ".join(DEFAULT_INTERNAL_DOMAINS),
         "show_excluded": False,
+        "pipeline_summary": "",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -452,42 +449,51 @@ def build_tracker(messages, owner):
 
 # ─── AI Classification (Anthropic Claude) ────────────────────────────────────
 
-AI_RELEVANCE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a consulting firm.
-Your job is to classify whether an email thread is relevant to CLIENT BUSINESS DEVELOPMENT.
+AI_RELEVANCE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a market research and strategy consultancy based in Australia.
 
-The tracker should ONLY include:
-- Current clients (organisations that have commissioned or are actively working with Forethought)
-- Prospective clients (organisations that Forethought is reaching out to or engaging with about potential work)
-- Former/dormant clients (organisations that previously engaged Forethought but are currently inactive)
+Forethought's CLIENTS are organisations (brands, government agencies, NFPs, corporations) that commission market research, insights, strategy, or consulting work from Forethought.
 
-The tracker should EXCLUDE:
-- Suppliers, vendors, or service providers to Forethought
-- Fieldwork houses, research panel providers, or data suppliers
-- Recruitment contacts, job applicants, or staffing agencies
-- Admin or operational contacts (IT support, office management, subscriptions)
-- Industry bodies, associations, or event organisers (unless they are also a client)
-- Personal contacts or social messages
-- Newsletters, automated notifications, or marketing emails
-- Internal colleagues at Forethought
+Your job: decide whether an email thread represents communication with a CLIENT or PROSPECTIVE CLIENT. Be very strict. When in doubt, mark as not relevant.
+
+INCLUDE (bd_relevant = true):
+- Current clients who have commissioned or are discussing research/consulting work
+- Prospective clients Forethought is reaching out to about potential engagements
+- Former clients who previously commissioned work (mark as former_client)
+
+EXCLUDE (bd_relevant = false) — these are NOT clients:
+- FIELDWORK HOUSES and research panel providers (e.g. PureProfile, Lightspeed, Dynata, Qualtrics panels, The Research Shop, fieldwork agencies, anyone providing data collection, sample, panel recruitment, or survey hosting services TO Forethought)
+- SOFTWARE and SAAS providers (e.g. Microsoft, NetSuite, Adobe, Canva, Zoom, Slack, any platform/tool Forethought uses)
+- IT support, security alerts, system notifications (e.g. Microsoft Security, password resets, account alerts)
+- RECRUITMENT contacts, job applicants, staffing agencies
+- OTHER SUPPLIERS or vendors providing services TO Forethought (design agencies, printers, accountants, lawyers, office suppliers)
+- Promotional emails, newsletters, marketing, event invitations from non-clients
+- Industry bodies, associations, conference organisers (unless they are also a paying client)
+- Personal or social emails unrelated to BD
+- Automated notifications from any system
+
+KEY TEST: Is this person/organisation someone who PAYS (or could pay) Forethought for research, insights, or consulting services? If they provide services TO Forethought, or are a platform/tool, they are NOT a client.
 
 Respond with ONLY a JSON object, no other text."""
 
-AI_STAGE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a consulting firm.
-Your job is to classify the BD pipeline stage of an email thread that has already been confirmed as relevant to client business development.
+AI_STAGE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a market research and strategy consultancy.
 
-The stages are (in order of progression):
-1. Outreach Sent - Initial contact made, no substantive reply yet
-2. Follow-up Needed - Previous outreach went unanswered for several days
-3. Engaged - Two-way conversation active, but no meeting or proposal yet
-4. Meeting Proposed - A meeting has been suggested but not yet confirmed
-5. Meeting Booked - A meeting or call is confirmed with a date/time
-6. Proposal Requested - The client has asked for or discussed a proposal, scope, or pricing
-7. Proposal Sent - A proposal, scope document, or fee estimate has been sent to the client
-8. Commissioned - The client has agreed to proceed or the work has been confirmed
-9. Closed / Not Now - The opportunity has been declined or deferred
+You are classifying the BD pipeline stage of a thread that is confirmed as client-relevant.
 
-Consider the FULL context: direction of messages, timing, language, and thread progression.
-Do not rely only on keywords — consider what the conversation as a whole indicates.
+The stages are:
+1. Outreach - Initial contact or re-engagement. Includes cold outreach, intro emails, LinkedIn follow-ups, or reconnecting with a dormant contact. No substantive two-way conversation yet.
+2. In Conversation - Active two-way engagement. Includes catch-ups, coffees, meetings (proposed or confirmed), general relationship building, discussing potential needs. No formal proposal or scope yet.
+3. Proposal - A proposal, scope, fee estimate, or pricing discussion is underway. The client has asked for a proposal OR one has been sent. This stage covers from "can you put something together" through to "here's our proposal."
+4. Commissioned - The client has explicitly agreed to proceed. The work has been confirmed, signed off, or a PO/agreement is in place. Only use this if the email shows clear commissioning language.
+5. Active Project - Ongoing delivery of commissioned work. Project management, deliverable discussions, status updates, data sharing for an active engagement. This is post-commissioning.
+6. Dormant - The thread has gone quiet. Previous engagement existed but no recent activity or the conversation stalled without resolution.
+7. Closed - The opportunity was explicitly declined, lost, or deferred with no near-term prospect.
+
+IMPORTANT:
+- A "coffee", "catch up", "chat", or "meeting" is "In Conversation", not Proposal.
+- "Proposal" requires actual discussion of scope, fees, deliverables, or a formal document.
+- "Commissioned" requires explicit agreement to proceed — not just interest.
+- "Active Project" is for emails about work already underway, not new BD.
+- If the last message is old and unanswered, consider "Dormant".
 
 Respond with ONLY a JSON object, no other text."""
 
@@ -598,13 +604,7 @@ Email: {email}
 Thread ({len(thread_data)} messages):
 {thread_summary}
 
-Available stages (in order of progression): {stages_str}
-
-Important:
-- Read the FULL thread carefully. Do not rely on individual keywords.
-- A "catch up" or "coffee" is a Meeting, not a Proposal.
-- "Proposal" stage requires actual discussion of scope, fees, pricing, or a formal proposal document.
-- Consider who sent what, the sequence, and what has actually been agreed.
+Available stages: {stages_str}
 
 Respond with this exact JSON structure:
 {{
@@ -682,6 +682,58 @@ def run_ai_classification(df, progress_callback=None):
     return df
 
 
+def generate_pipeline_summary(df):
+    """Generate an AI-written narrative summary of the BD pipeline state."""
+    if df.empty or not ANTHROPIC_API_KEY:
+        return ""
+
+    # Build a concise data snapshot for Claude
+    bd_df = df[df["bd_relevant"].fillna(False).astype(bool)].copy() if "bd_relevant" in df.columns else df.copy()
+
+    if bd_df.empty:
+        return "No BD-relevant contacts found after classification."
+
+    total = len(bd_df)
+    stage_counts = {}
+    stage_contacts = {}
+    for stage in STAGE_ORDER:
+        matches = bd_df[bd_df["stage"] == stage]
+        count = len(matches)
+        stage_counts[stage] = count
+        if count > 0:
+            names = []
+            for _, r in matches.iterrows():
+                client = r.get("client_name", "")
+                contact = r.get("contact_name", "")
+                days = r.get("days_since_touch", "?")
+                names.append(f"{client} ({contact}, {days}d ago)")
+            stage_contacts[stage] = names
+
+    snapshot = f"Total BD-relevant contacts: {total}\n\n"
+    for stage in STAGE_ORDER:
+        count = stage_counts[stage]
+        if count > 0:
+            snapshot += f"{stage} ({count}):\n"
+            for name in stage_contacts[stage]:
+                snapshot += f"  - {name}\n"
+            snapshot += "\n"
+
+    system_prompt = """You are a senior BD advisor for Forethought Outcomes, a market research and strategy consultancy.
+
+Write a brief, sharp pipeline summary (3-5 sentences) for the BD team. Be specific — mention actual client names and stages where relevant. Focus on:
+- Overall pipeline health and momentum
+- Key opportunities that need attention (proposals pending, follow-ups overdue)
+- Any risks (dormant threads, stalled conversations)
+- One clear priority action
+
+Write in a direct, professional tone. No bullet points — flowing prose only. Do not use any markdown formatting."""
+
+    user_prompt = f"""Here is the current BD pipeline snapshot after AI classification:\n\n{snapshot}\n\nWrite a concise pipeline summary."""
+
+    text = _call_claude(system_prompt, user_prompt)
+    return text.strip() if text else ""
+
+
 # ─── Sync action ─────────────────────────────────────────────────────────────
 
 def sync_outlook():
@@ -704,6 +756,7 @@ def sync_outlook():
     st.session_state.tracker_df = build_tracker(messages, owner)
     st.session_state.last_sync = datetime.now(timezone.utc)
     st.session_state.last_classify = None
+    st.session_state.pipeline_summary = ""
 
 
 # ─── HTML helpers ─────────────────────────────────────────────────────────────
@@ -920,6 +973,10 @@ def render_top_nav():
                         st.session_state.tracker_df,
                         progress_callback=lambda p, t: progress.progress(p, text=t),
                     )
+                    progress.progress(1.0, text="Generating pipeline summary\u2026")
+                    st.session_state.pipeline_summary = generate_pipeline_summary(
+                        st.session_state.tracker_df,
+                    )
                     st.session_state.last_classify = datetime.now(timezone.utc)
                     progress.empty()
                     st.rerun()
@@ -969,19 +1026,17 @@ def render_pipeline_bar(df):
 
 def render_kpi_row(df):
     total = len(df)
-    follow_up = int((df["stage"] == "Follow-up Needed").sum()) if not df.empty else 0
-    meetings = int(
-        df["stage"].isin(["Meeting Proposed", "Meeting Booked"]).sum()
-    ) if not df.empty else 0
-    proposals = int(
-        df["stage"].isin(["Proposal Requested", "Proposal Sent"]).sum()
+    in_convo = int((df["stage"] == "In Conversation").sum()) if not df.empty else 0
+    proposals = int((df["stage"] == "Proposal").sum()) if not df.empty else 0
+    active = int(
+        df["stage"].isin(["Commissioned", "Active Project"]).sum()
     ) if not df.empty else 0
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Active Contacts", total)
-    c2.metric("Need Follow-up", follow_up)
-    c3.metric("Meetings", meetings)
-    c4.metric("Proposals", proposals)
+    c2.metric("In Conversation", in_convo)
+    c3.metric("Proposals", proposals)
+    c4.metric("Commissioned / Active", active)
 
 
 def render_filter_bar(df):
@@ -1133,6 +1188,22 @@ def render_csv_export(df):
         )
 
 
+def render_pipeline_summary():
+    summary = st.session_state.get("pipeline_summary", "")
+    if not summary:
+        return
+    summary_html = (
+        '<div class="pipeline-summary">'
+        '<div class="pipeline-summary-header">'
+        '<span class="pipeline-summary-icon">\U0001F4A1</span>'
+        '<span class="pipeline-summary-title">Pipeline Insight</span>'
+        '</div>'
+        f'<div class="pipeline-summary-text">{_esc(summary)}</div>'
+        '</div>'
+    )
+    st.markdown(summary_html, unsafe_allow_html=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1166,6 +1237,7 @@ def main():
 
     render_pipeline_bar(bd_only)
     render_kpi_row(bd_only)
+    render_pipeline_summary()
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
