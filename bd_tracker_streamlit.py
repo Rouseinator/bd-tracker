@@ -74,6 +74,7 @@ STAGE_STYLES = {
     "Proposal Sent":     ("#ffe0ba", "rgba(255,173,90,0.11)",  "rgba(255,173,90,0.22)"),
     "Commissioned":      ("#d6ffd8", "rgba(117,243,128,0.11)", "rgba(117,243,128,0.22)"),
     "Closed / Not Now":  ("#dde4f1", "rgba(155,166,190,0.12)", "rgba(155,166,190,0.22)"),
+    "Pending":           ("#8090a7", "rgba(128,144,167,0.08)", "rgba(128,144,167,0.15)"),
 }
 
 CONTACT_TYPE_STYLES = {
@@ -377,7 +378,7 @@ def normalise_messages(messages, box, internal_domains):
     return rows
 
 
-# ─── Stage inference (rule-based fallback) ────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _derive_days(date_str):
     if not date_str:
@@ -386,41 +387,6 @@ def _derive_days(date_str):
     if pd.isna(dt):
         return None
     return max(0, (datetime.now(timezone.utc) - dt.to_pydatetime()).days)
-
-
-def _infer_stage_rules(last_out, last_in, subject, preview):
-    text = f"{subject or ''} {preview or ''}".lower()
-    if any(w in text for w in ["proposal", "scope", "pricing", "quote", "fee"]):
-        if any(w in text for w in ["attached", "proposal attached", "send through"]):
-            return "Proposal Sent"
-        return "Proposal Requested"
-    if any(w in text for w in [
-        "meet", "catch up", "catch-up", "calendar", "invite", "booked", "confirmed",
-    ]):
-        if any(w in text for w in ["invite", "booked", "confirmed"]):
-            return "Meeting Booked"
-        return "Meeting Proposed"
-    if last_out and (
-        not last_in
-        or pd.to_datetime(last_in, utc=True) < pd.to_datetime(last_out, utc=True)
-    ):
-        days = _derive_days(last_out) or 0
-        return "Follow-up Needed" if days >= FOLLOW_UP_DAYS else "Outreach Sent"
-    return "Engaged"
-
-
-def _suggest_next_step(stage):
-    return {
-        "Outreach Sent":     "Monitor for reply or send a follow-up in a few days.",
-        "Follow-up Needed":  "Send a short follow-up and propose a next step.",
-        "Engaged":           "Keep momentum with a relevant next touchpoint.",
-        "Meeting Proposed":  "Confirm a time and send a calendar invite.",
-        "Meeting Booked":    "Prepare an agenda and discussion points.",
-        "Proposal Requested":"Draft a proposal outline and indicative fee range.",
-        "Proposal Sent":     "Follow up on proposal feedback and timing.",
-        "Commissioned":      "Confirm scope and kick off delivery.",
-        "Closed / Not Now":  "Archive and revisit in a future quarter.",
-    }.get(stage, "Review thread and decide next step.")
 
 
 # ─── Tracker builder ─────────────────────────────────────────────────────────
@@ -445,15 +411,7 @@ def build_tracker(messages, owner):
         group.sort(
             key=lambda x: pd.to_datetime(x["datetime"], utc=True, errors="coerce"),
         )
-        inbound = [m for m in group if m["direction"] == "inbound"]
-        outbound = [m for m in group if m["direction"] == "outbound"]
         latest = group[-1]
-        last_in = inbound[-1]["datetime"] if inbound else None
-        last_out = outbound[-1]["datetime"] if outbound else None
-        stage = _infer_stage_rules(
-            last_out, last_in,
-            latest.get("subject", ""), latest.get("preview", ""),
-        )
 
         # Build thread summary for AI classification
         thread_data = []
@@ -470,11 +428,11 @@ def build_tracker(messages, owner):
             "contact_name": latest.get("contact_name", ""),
             "counterparty_email": email,
             "owner": owner,
-            "stage": stage,
+            "stage": "Pending",
             "last_touch": latest.get("datetime"),
             "days_since_touch": _derive_days(latest.get("datetime")),
             "latest_subject": latest.get("subject", ""),
-            "next_step": _suggest_next_step(stage),
+            "next_step": "Run AI classification to determine stage.",
             "notes": latest.get("preview", ""),
             "thread_data": json.dumps(thread_data),
             "contact_type": "",
@@ -619,7 +577,7 @@ Respond with this exact JSON structure:
     }
 
 
-def classify_stage(contact_name, email, stage_rules, thread_data_json):
+def classify_stage(contact_name, email, thread_data_json):
     """Classify the BD pipeline stage using Claude."""
     thread_data = json.loads(thread_data_json) if isinstance(thread_data_json, str) else thread_data_json
 
@@ -632,16 +590,21 @@ def classify_stage(contact_name, email, stage_rules, thread_data_json):
 
     stages_str = ", ".join(STAGE_ORDER)
 
-    user_prompt = f"""Classify the BD pipeline stage for this thread.
+    user_prompt = f"""Classify the BD pipeline stage for this email thread.
 
 Contact: {contact_name}
 Email: {email}
-Rule-based stage guess: {stage_rules}
 
 Thread ({len(thread_data)} messages):
 {thread_summary}
 
-Available stages: {stages_str}
+Available stages (in order of progression): {stages_str}
+
+Important:
+- Read the FULL thread carefully. Do not rely on individual keywords.
+- A "catch up" or "coffee" is a Meeting, not a Proposal.
+- "Proposal" stage requires actual discussion of scope, fees, pricing, or a formal proposal document.
+- Consider who sent what, the sequence, and what has actually been agreed.
 
 Respond with this exact JSON structure:
 {{
@@ -656,7 +619,7 @@ Respond with this exact JSON structure:
     if not result:
         return None
     return {
-        "stage": result.get("stage", stage_rules),
+        "stage": result.get("stage", "Pending"),
         "ai_confidence": result.get("confidence", 0.0),
         "ai_stage_reasoning": result.get("reasoning", ""),
         "next_step": result.get("next_step", ""),
@@ -697,18 +660,20 @@ def run_ai_classification(df, progress_callback=None):
                 stage_result = classify_stage(
                     row.get("contact_name", ""),
                     row.get("counterparty_email", ""),
-                    row.get("stage", ""),
                     row.get("thread_data", "[]"),
                 )
                 if stage_result:
                     df.at[idx, "stage"] = stage_result["stage"]
                     df.at[idx, "ai_stage_reasoning"] = stage_result["ai_stage_reasoning"]
                     df.at[idx, "next_step"] = stage_result["next_step"]
-                    # Use the average of both confidence scores
                     stage_conf = stage_result.get("ai_confidence", 0)
                     df.at[idx, "ai_confidence"] = round(
                         (rel["ai_confidence"] + stage_conf) / 2, 2
                     )
+            else:
+                # Not BD relevant — mark stage clearly
+                df.at[idx, "stage"] = "Not BD"
+                df.at[idx, "next_step"] = ""
         else:
             # API failed for this contact — leave as unclassified
             df.at[idx, "bd_relevant"] = None
@@ -798,11 +763,14 @@ def apply_filters(df, search, stage, sort, show_excluded):
 
     filtered = df.copy()
 
-    # Filter out non-BD contacts unless show_excluded is on
+    # After AI classification, hide non-BD contacts unless toggled on
     if not show_excluded and "bd_relevant" in filtered.columns:
-        has_ai = filtered["bd_relevant"].notna()
-        if has_ai.any():
-            filtered = filtered[~has_ai | (filtered["bd_relevant"] == True)]  # noqa: E712
+        # Keep: unclassified (None/NaN) OR bd_relevant == True
+        classified_mask = filtered["bd_relevant"].notna()
+        if classified_mask.any():
+            relevant_mask = filtered["bd_relevant"].fillna(False).astype(bool)
+            unclassified_mask = ~classified_mask
+            filtered = filtered[relevant_mask | unclassified_mask]
 
     if search:
         mask = filtered.astype(str).apply(
@@ -1185,19 +1153,19 @@ def main():
         df = pd.DataFrame(SAMPLE_DATA)
         using_sample = True
 
-    # If AI has classified, only count BD-relevant in pipeline/KPIs
+    # Pipeline/KPIs only show BD-relevant contacts (exclude Pending and Not BD)
     display_df = df.copy()
-    if not using_sample and "bd_relevant" in display_df.columns:
-        has_ai = display_df["bd_relevant"].notna()
-        if has_ai.any():
-            display_df_filtered = display_df[~has_ai | (display_df["bd_relevant"] == True)]  # noqa: E712
+    if "bd_relevant" in display_df.columns:
+        classified = display_df["bd_relevant"].notna()
+        if classified.any():
+            bd_only = display_df[display_df["bd_relevant"].fillna(False).astype(bool)]
         else:
-            display_df_filtered = display_df
+            bd_only = display_df
     else:
-        display_df_filtered = display_df
+        bd_only = display_df
 
-    render_pipeline_bar(display_df_filtered)
-    render_kpi_row(display_df_filtered)
+    render_pipeline_bar(bd_only)
+    render_kpi_row(bd_only)
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
