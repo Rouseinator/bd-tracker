@@ -247,6 +247,10 @@ def _apply_memory(df) -> pd.DataFrame:
             df.at[idx, "ai_reasoning"] = saved.get("ai_reasoning", "")
             df.at[idx, "ai_stage_reasoning"] = saved.get("ai_stage_reasoning", "")
             df.at[idx, "next_step"] = saved.get("next_step", "")
+            # Restore proper company name if saved
+            saved_name = saved.get("client_name", "")
+            if saved_name:
+                df.at[idx, "client_name"] = saved_name
     return df
 
 
@@ -268,6 +272,7 @@ def _update_memory(df) -> None:
                 "ai_reasoning": row.get("ai_reasoning", ""),
                 "ai_stage_reasoning": row.get("ai_stage_reasoning", ""),
                 "next_step": row.get("next_step", ""),
+                "client_name": row.get("client_name", ""),
                 "classified_at": datetime.now(timezone.utc).isoformat(),
             }
     _save_memory(memory)
@@ -291,6 +296,7 @@ def init_state() -> None:
         "internal_domains": ", ".join(DEFAULT_INTERNAL_DOMAINS),
         "show_excluded": False,
         "pipeline_summary": "",
+        "pipeline_stage_filter": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -381,12 +387,71 @@ def _email_name(obj) -> str:
         return ""
 
 
+_CLIENT_NAME_OVERRIDES = {
+    "cpaaustralia": "CPA Australia",
+    "unimelb": "University of Melbourne",
+    "monash": "Monash University",
+    "anu": "Australian National University",
+    "unsw": "UNSW Sydney",
+    "usyd": "University of Sydney",
+    "uts": "UTS",
+    "rmit": "RMIT University",
+    "deakin": "Deakin University",
+    "latrobe": "La Trobe University",
+    "swinburne": "Swinburne University",
+    "anzsog": "ANZSOG",
+    "csiro": "CSIRO",
+    "abc": "ABC",
+    "nab": "NAB",
+    "anz": "ANZ",
+    "cba": "Commonwealth Bank",
+    "westpac": "Westpac",
+    "kpmg": "KPMG",
+    "ey": "EY",
+    "pwc": "PwC",
+    "deloitte": "Deloitte",
+    "accenture": "Accenture",
+    "ibm": "IBM",
+    "microsoft": "Microsoft",
+    "google": "Google",
+    "amazon": "Amazon",
+    "atlassian": "Atlassian",
+    "canva": "Canva",
+    "nbn": "NBN Co",
+    "telstra": "Telstra",
+    "optus": "Optus",
+    "vic.gov": "Victorian Government",
+    "health.gov": "Department of Health",
+    "education.gov": "Department of Education",
+    "defence.gov": "Department of Defence",
+    "treasury.gov": "Treasury",
+    "dynata": "Dynata",
+    "lightspeedresearch": "Lightspeed Research",
+    "toluna": "Toluna",
+    "netsuite": "NetSuite",
+    "salesforce": "Salesforce",
+    "hubspot": "HubSpot",
+}
+
+
 def _domain_to_client(email) -> str:
     if not email or "@" not in email:
         return "Unknown"
-    domain = email.split("@", 1)[1]
+    domain = email.split("@", 1)[1].lower()
     base = domain.split(".")[0]
-    return " ".join(part.capitalize() for part in base.replace("-", " ").split())
+
+    # Check exact match first
+    if base in _CLIENT_NAME_OVERRIDES:
+        return _CLIENT_NAME_OVERRIDES[base]
+
+    # Check if domain (without TLD) matches any override key
+    domain_no_tld = domain.rsplit(".", 1)[0] if "." in domain else domain
+    for key, name in _CLIENT_NAME_OVERRIDES.items():
+        if key in domain_no_tld:
+            return name
+
+    # Default: split on hyphens/dots and title-case
+    return " ".join(part.capitalize() for part in base.replace("-", " ").replace("_", " ").split())
 
 
 def _is_internal(email, internal_domains) -> bool:
@@ -841,7 +906,8 @@ For EACH contact, respond with a JSON object inside a JSON array. Each object mu
   "reasoning": "One or two sentences on why this is or is not BD relevant.",
   "stage": "one of: {stages_str}" (only if bd_relevant is true, otherwise "Not BD"),
   "stage_reasoning": "One or two sentences on why this stage was chosen." (only if bd_relevant),
-  "next_step": "A specific, actionable next step." (only if bd_relevant, otherwise "")
+  "next_step": "A specific, actionable next step." (only if bd_relevant, otherwise ""),
+  "proper_company_name": "The correct, properly formatted business name (e.g. 'CPA Australia' not 'Cpaaustralia', 'University of Melbourne' not 'Unimelb', 'ANZSOG' not 'Anzsog'). Use standard capitalisation and the name the organisation is commonly known by."
 }}
 
 Respond with ONLY the JSON array, no other text."""
@@ -907,6 +973,11 @@ def run_ai_classification(df, progress_callback=None):
                     df.at[idx, "contact_type"] = result.get("contact_type", "not_relevant")
                     df.at[idx, "ai_confidence"] = result.get("confidence", 0.0)
                     df.at[idx, "ai_reasoning"] = result.get("reasoning", "")
+
+                    # Update client name if AI returned a proper company name
+                    proper_name = result.get("proper_company_name", "")
+                    if proper_name and proper_name.strip():
+                        df.at[idx, "client_name"] = proper_name.strip()
 
                     if bd_relevant:
                         df.at[idx, "stage"] = result.get("stage", "Pending")
@@ -1311,23 +1382,29 @@ def render_pipeline_bar(df):
         unsafe_allow_html=True,
     )
 
-    blocks = []
-    for stage in STAGE_ORDER:
+    # Clickable pipeline stage buttons
+    cols = st.columns(len(STAGE_ORDER))
+    for i, stage in enumerate(STAGE_ORDER):
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
-        zero_class = " zero" if count == 0 else ""
-        blocks.append(
-            f'<div class="pipeline-stage{zero_class}" '
-            f'style="border-color:{border};background:{bg};">'
-            f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
-            f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
-            f'</div>'
-        )
-
-    st.markdown(
-        f'<div class="pipeline-bar">{"".join(blocks)}</div>',
-        unsafe_allow_html=True,
-    )
+        active = st.session_state.get("pipeline_stage_filter") == stage
+        active_class = " pipeline-stage-active" if active else ""
+        zero_class = " zero" if count == 0 and not active else ""
+        with cols[i]:
+            st.markdown(
+                f'<div class="pipeline-stage{zero_class}{active_class}" '
+                f'style="border-color:{border};background:{bg};">'
+                f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
+                f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(stage, key=f"pipe_{stage}", use_container_width=True):
+                if st.session_state.get("pipeline_stage_filter") == stage:
+                    st.session_state.pipeline_stage_filter = None
+                else:
+                    st.session_state.pipeline_stage_filter = stage
+                st.rerun()
 
 
 def render_kpi_row(df):
@@ -1565,7 +1642,26 @@ def main():
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     search, stage, sort, show_excluded = render_filter_bar(df)
+    # Pipeline bar click overrides dropdown stage filter
+    pipe_filter = st.session_state.get("pipeline_stage_filter")
+    if pipe_filter:
+        stage = pipe_filter
     filtered = apply_filters(df, search, stage, sort, show_excluded)
+
+    # Show active pipeline filter with clear button
+    if pipe_filter:
+        fc1, fc2 = st.columns([6, 1])
+        with fc1:
+            fg = STAGE_STYLES.get(pipe_filter, ("#edf0f7",))[0]
+            st.markdown(
+                f'<div style="font-size:0.8rem;color:{fg};padding:4px 0;">'
+                f'Filtering: <strong>{_esc(pipe_filter)}</strong></div>',
+                unsafe_allow_html=True,
+            )
+        with fc2:
+            if st.button("✕ Clear filter", key="clear_pipe_filter", use_container_width=True):
+                st.session_state.pipeline_stage_filter = None
+                st.rerun()
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 

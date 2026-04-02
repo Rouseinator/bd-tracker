@@ -133,8 +133,20 @@ div[data-testid="stSidebar"] { display: none !important; }
     border-radius: 10px;
     padding: 12px 4px 10px;
     border: 1px solid transparent;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, transform 0.15s;
+    cursor: pointer;
 }
+.pipeline-stage:hover {
+    transform: translateY(-2px);
+    opacity: 1 !important;
+}
+.pipeline-stage-active {
+    outline: 2px solid #5ec6c1;
+    outline-offset: 2px;
+    opacity: 1 !important;
+}
+
+
 
 /* Pipeline header block */
 .pipeline-header-block {
