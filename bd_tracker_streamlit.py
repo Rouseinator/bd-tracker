@@ -10,7 +10,8 @@ import html
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -52,6 +53,7 @@ SCOPES = ["Mail.Read"]
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 DEFAULT_INTERNAL_DOMAINS = ["forethought.com.au", "forethought.com", "brandcomms.ai"]
 FOLLOW_UP_DAYS = 5
+MELB_TZ = ZoneInfo("Australia/Melbourne")
 
 STAGE_ORDER = [
     "Outreach",
@@ -1148,7 +1150,7 @@ def _days_html(days):
 
 # ─── Filter logic ─────────────────────────────────────────────────────────────
 
-def apply_filters(df, search, stage, sort, show_excluded):
+def apply_filters(df, search, stage, sort, show_excluded, date_from=None, date_to=None):
     if df.empty:
         return df
 
@@ -1159,6 +1161,14 @@ def apply_filters(df, search, stage, sort, show_excluded):
         # Always hide contacts explicitly marked as not relevant (False)
         # Always show contacts marked as relevant (True) or unclassified (None)
         filtered = filtered[filtered["bd_relevant"].fillna(True).astype(bool)]
+
+    # Date range filter on last_touch
+    if date_from and "last_touch" in filtered.columns:
+        filtered["_touch_date"] = pd.to_datetime(filtered["last_touch"], errors="coerce").dt.date
+        filtered = filtered[filtered["_touch_date"] >= date_from]
+        if date_to:
+            filtered = filtered[filtered["_touch_date"] <= date_to]
+        filtered = filtered.drop(columns=["_touch_date"])
 
     if search:
         mask = filtered.astype(str).apply(
@@ -1449,7 +1459,54 @@ def render_filter_bar(df):
     with c4:
         show_excluded = st.checkbox("Show excluded", key="show_excluded")
 
-    return search, stage, sort, show_excluded
+    # Date range filter row
+    dc1, dc2, dc3 = st.columns([1.5, 1.5, 4])
+    today = datetime.now(MELB_TZ).date()
+    with dc1:
+        date_from = st.date_input(
+            "From",
+            value=today - timedelta(days=30),
+            max_value=today,
+            key="date_from",
+        )
+    with dc2:
+        date_to = st.date_input(
+            "To",
+            value=today,
+            max_value=today,
+            key="date_to",
+        )
+    with dc3:
+        # Quick presets
+        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        pc1, pc2, pc3, pc4, pc5 = st.columns(5)
+        with pc1:
+            if st.button("7 days", key="preset_7d", use_container_width=True):
+                st.session_state.date_from = today - timedelta(days=7)
+                st.session_state.date_to = today
+                st.rerun()
+        with pc2:
+            if st.button("14 days", key="preset_14d", use_container_width=True):
+                st.session_state.date_from = today - timedelta(days=14)
+                st.session_state.date_to = today
+                st.rerun()
+        with pc3:
+            if st.button("30 days", key="preset_30d", use_container_width=True):
+                st.session_state.date_from = today - timedelta(days=30)
+                st.session_state.date_to = today
+                st.rerun()
+        with pc4:
+            if st.button("90 days", key="preset_90d", use_container_width=True):
+                st.session_state.date_from = today - timedelta(days=90)
+                st.session_state.date_to = today
+                st.rerun()
+        with pc5:
+            if st.button("All time", key="preset_all", use_container_width=True):
+                st.session_state.date_from = today - timedelta(days=3650)
+                st.session_state.date_to = today
+                st.rerun()
+
+    return search, stage, sort, show_excluded, date_from, date_to
 
 
 def render_contact_cards(df):
@@ -1641,12 +1698,12 @@ def main():
         )
         st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
-    search, stage, sort, show_excluded = render_filter_bar(df)
+    search, stage, sort, show_excluded, date_from, date_to = render_filter_bar(df)
     # Pipeline bar click overrides dropdown stage filter
     pipe_filter = st.session_state.get("pipeline_stage_filter")
     if pipe_filter:
         stage = pipe_filter
-    filtered = apply_filters(df, search, stage, sort, show_excluded)
+    filtered = apply_filters(df, search, stage, sort, show_excluded, date_from, date_to)
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
@@ -1658,9 +1715,11 @@ def main():
     # Status footer
     parts = []
     if st.session_state.last_sync:
-        parts.append(f"Synced: {st.session_state.last_sync.strftime('%d %b %H:%M UTC')}")
+        melb_sync = st.session_state.last_sync.astimezone(MELB_TZ)
+        parts.append(f"Synced: {melb_sync.strftime('%d %b %H:%M AEST')}")
     if st.session_state.last_classify:
-        parts.append(f"Classified: {st.session_state.last_classify.strftime('%d %b %H:%M UTC')}")
+        melb_cls = st.session_state.last_classify.astimezone(MELB_TZ)
+        parts.append(f"Classified: {melb_cls.strftime('%d %b %H:%M AEST')}")
     if parts:
         st.markdown(
             f'<div class="sample-notice">{" \u00b7 ".join(parts)}</div>',
