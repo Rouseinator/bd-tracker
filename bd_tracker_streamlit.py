@@ -1194,7 +1194,7 @@ def render_top_nav():
 
     with left:
         st.markdown(
-            f'<div class="nav-brand">{_logo_img("26px")}</div>',
+            f'<div class="nav-brand">{_logo_img("32px")}</div>',
             unsafe_allow_html=True,
         )
 

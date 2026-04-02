@@ -31,7 +31,8 @@ div[data-testid="stSidebar"] { display: none !important; }
 .nav-brand {
     display: flex;
     align-items: center;
-    padding: 4px 0;
+    min-height: 42px;
+    padding: 0;
 }
 .nav-brand img {
     display: block;
