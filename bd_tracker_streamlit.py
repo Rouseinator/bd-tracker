@@ -1396,59 +1396,39 @@ def render_pipeline_bar(df):
     pipe_cols = st.columns(len(STAGE_ORDER))
     for i, stage in enumerate(STAGE_ORDER):
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
-        fg, bg, border = STAGE_STYLES[stage]
         active = st.session_state.get("pipeline_stage_filter") == stage
-        active_css = "outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
-        opacity_css = "opacity:0.3;" if count == 0 and not active else ""
-        slug = stage.lower().replace(" ", "-")
+        label = f"{count}\n{stage.upper()}"
         with pipe_cols[i]:
-            st.markdown(f'<div class="pipe-btn pipe-btn-{slug}">', unsafe_allow_html=True)
-            if st.button(f"{count}\n{stage.upper()}", key=f"pipe_{stage}", use_container_width=True):
+            if st.button(label, key=f"pipe_{stage}", use_container_width=True):
                 if active:
                     st.session_state.pipeline_stage_filter = None
                 else:
                     st.session_state.pipeline_stage_filter = stage
                 st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
-
-    # Inject pipeline button styles
-    pipe_css = ""
-    for stage in STAGE_ORDER:
-        fg, bg, border = STAGE_STYLES[stage]
-        slug = stage.lower().replace(" ", "-")
-        active = st.session_state.get("pipeline_stage_filter") == stage
-        active_css = "outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
-        count = int((df["stage"] == stage).sum()) if not df.empty else 0
-        opacity_css = "opacity:0.3;" if count == 0 and not active else ""
-        pipe_css += (
-            f'.pipe-btn-{slug} button {{'
-            f'  background:{bg} !important;'
-            f'  border:1px solid {border} !important;'
-            f'  border-radius:10px !important;'
-            f'  color:{fg} !important;'
-            f'  padding:8px 4px 8px !important;'
-            f'  min-height:68px !important;'
-            f'  white-space:pre-line !important;'
-            f'  text-align:center !important;'
-            f'  font-size:0.58rem !important;'
-            f'  font-weight:600 !important;'
-            f'  text-transform:uppercase !important;'
-            f'  letter-spacing:0.03em !important;'
-            f'  line-height:1.4 !important;'
-            f'  {active_css}{opacity_css}'
-            f'}}'
-            f'.pipe-btn-{slug} button::first-line {{'
-            f'  font-size:1.35rem !important;'
-            f'  font-weight:700 !important;'
-            f'  line-height:2.0 !important;'
-            f'  text-transform:none !important;'
-            f'  letter-spacing:0 !important;'
-            f'}}'
-            f'.pipe-btn-{slug} button:hover {{'
-            f'  transform:translateY(-2px);opacity:1 !important;'
-            f'}}'
-        )
-    st.markdown(f'<style>{pipe_css}</style>', unsafe_allow_html=True)
+            # Inject per-stage color styling
+            fg, bg, border = STAGE_STYLES[stage]
+            active_outline = f"outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
+            opacity = "opacity:0.3;" if count == 0 and not active else ""
+            st.markdown(
+                f'<style>'
+                f'[data-testid="stColumn"]:nth-child({i+1}) button[kind="secondary"][data-testid="stBaseButton-secondary"] {{'
+                f'  background:{bg} !important;'
+                f'  border:1px solid {border} !important;'
+                f'  border-radius:10px !important;'
+                f'  color:{fg} !important;'
+                f'  padding:12px 4px 10px !important;'
+                f'  min-height:60px !important;'
+                f'  white-space:pre-line !important;'
+                f'  font-size:0.58rem !important;'
+                f'  font-weight:600 !important;'
+                f'  text-transform:uppercase !important;'
+                f'  letter-spacing:0.03em !important;'
+                f'  line-height:1.8 !important;'
+                f'  {active_outline}{opacity}'
+                f'}}'
+                f'</style>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_kpi_row(df):
