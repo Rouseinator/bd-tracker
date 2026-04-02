@@ -1036,10 +1036,9 @@ def _pill_html(stage):
     fg, bg, border = STAGE_STYLES.get(
         stage, ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
     )
-    tooltip = _esc(STAGE_DEFINITIONS.get(stage, ""))
     return (
         f'<span class="pill" style="color:{fg};background:{bg};'
-        f'border-color:{border};" title="{tooltip}">{_esc(stage)}</span>'
+        f'border-color:{border};">{_esc(stage)}</span>'
     )
 
 
@@ -1284,21 +1283,24 @@ def render_top_nav():
 
 def render_pipeline_bar(df):
     st.markdown(
-        '<div class="section-header">Pipeline</div>', unsafe_allow_html=True,
+        '<div class="section-header">Pipeline '
+        '<span class="section-header-hint">Hover over a stage for its definition</span>'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     blocks = []
     for stage in STAGE_ORDER:
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
-        tooltip = _esc(STAGE_DEFINITIONS.get(stage, ""))
+        definition = _esc(STAGE_DEFINITIONS.get(stage, ""))
         zero_class = " zero" if count == 0 else ""
         blocks.append(
             f'<div class="pipeline-stage{zero_class}" '
-            f'style="border-color:{border};background:{bg};" '
-            f'title="{tooltip}">'
+            f'style="border-color:{border};background:{bg};">'
             f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
             f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
+            f'<div class="pipeline-tooltip">{definition}</div>'
             f'</div>'
         )
 
