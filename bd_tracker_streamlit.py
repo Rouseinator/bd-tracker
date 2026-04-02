@@ -1396,35 +1396,50 @@ def render_pipeline_bar(df):
     pipe_cols = st.columns(len(STAGE_ORDER))
     for i, stage in enumerate(STAGE_ORDER):
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
+        fg, bg, border = STAGE_STYLES[stage]
         active = st.session_state.get("pipeline_stage_filter") == stage
+        active_css = f"outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
+        opacity_css = "opacity:0.3;" if count == 0 and not active else ""
+        slug = stage.lower().replace(" ", "-")
         label = f"{count}\n{stage.upper()}"
         with pipe_cols[i]:
+            st.markdown(f'<div class="pipe-btn pipe-btn-{slug}">', unsafe_allow_html=True)
             if st.button(label, key=f"pipe_{stage}", use_container_width=True):
                 if active:
                     st.session_state.pipeline_stage_filter = None
                 else:
                     st.session_state.pipeline_stage_filter = stage
                 st.rerun()
-            # Inject per-stage color styling
-            fg, bg, border = STAGE_STYLES[stage]
-            active_outline = f"outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
-            opacity = "opacity:0.3;" if count == 0 and not active else ""
+            st.markdown('</div>', unsafe_allow_html=True)
             st.markdown(
                 f'<style>'
-                f'[data-testid="stColumn"]:nth-child({i+1}) button[kind="secondary"][data-testid="stBaseButton-secondary"] {{'
+                f'.pipe-btn-{slug} button {{'
                 f'  background:{bg} !important;'
                 f'  border:1px solid {border} !important;'
                 f'  border-radius:10px !important;'
                 f'  color:{fg} !important;'
-                f'  padding:12px 4px 10px !important;'
-                f'  min-height:60px !important;'
+                f'  padding:10px 4px 8px !important;'
+                f'  min-height:68px !important;'
                 f'  white-space:pre-line !important;'
+                f'  text-align:center !important;'
+                f'  transition:opacity 0.2s, transform 0.15s !important;'
+                f'  {active_css}{opacity_css}'
+                f'}}'
+                f'.pipe-btn-{slug} button::first-line {{'
+                f'  font-size:1.35rem !important;'
+                f'  font-weight:700 !important;'
+                f'  line-height:1.6 !important;'
+                f'}}'
+                f'.pipe-btn-{slug} button {{'
                 f'  font-size:0.58rem !important;'
                 f'  font-weight:600 !important;'
                 f'  text-transform:uppercase !important;'
                 f'  letter-spacing:0.03em !important;'
-                f'  line-height:1.8 !important;'
-                f'  {active_outline}{opacity}'
+                f'  line-height:1.3 !important;'
+                f'}}'
+                f'.pipe-btn-{slug} button:hover {{'
+                f'  transform:translateY(-2px);'
+                f'  opacity:1 !important;'
                 f'}}'
                 f'</style>',
                 unsafe_allow_html=True,
