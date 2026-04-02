@@ -249,9 +249,9 @@ def _apply_memory(df) -> pd.DataFrame:
             df.at[idx, "ai_reasoning"] = saved.get("ai_reasoning", "")
             df.at[idx, "ai_stage_reasoning"] = saved.get("ai_stage_reasoning", "")
             df.at[idx, "next_step"] = saved.get("next_step", "")
-            # Restore proper company name if saved
+            # Restore proper company name only if it looks like a real name
             saved_name = saved.get("client_name", "")
-            if saved_name:
+            if saved_name and _is_proper_name(saved_name):
                 df.at[idx, "client_name"] = saved_name
     return df
 
@@ -389,74 +389,31 @@ def _email_name(obj) -> str:
         return ""
 
 
-_CLIENT_NAME_OVERRIDES = {
-    "cpaaustralia": "CPA Australia",
-    "unimelb": "University of Melbourne",
-    "monash": "Monash University",
-    "anu": "Australian National University",
-    "unsw": "UNSW Sydney",
-    "usyd": "University of Sydney",
-    "uts": "UTS",
-    "rmit": "RMIT University",
-    "deakin": "Deakin University",
-    "latrobe": "La Trobe University",
-    "swinburne": "Swinburne University",
-    "swin": "Swinburne University",
-    "anzsog": "ANZSOG",
-    "csiro": "CSIRO",
-    "abc": "ABC",
-    "nab": "NAB",
-    "anz": "ANZ",
-    "cba": "Commonwealth Bank",
-    "westpac": "Westpac",
-    "kpmg": "KPMG",
-    "ey": "EY",
-    "pwc": "PwC",
-    "deloitte": "Deloitte",
-    "accenture": "Accenture",
-    "ibm": "IBM",
-    "microsoft": "Microsoft",
-    "google": "Google",
-    "amazon": "Amazon",
-    "atlassian": "Atlassian",
-    "canva": "Canva",
-    "nbn": "NBN Co",
-    "telstra": "Telstra",
-    "optus": "Optus",
-    "vic.gov": "Victorian Government",
-    "health.gov": "Department of Health",
-    "education.gov": "Department of Education",
-    "defence.gov": "Department of Defence",
-    "treasury.gov": "Treasury",
-    "dynata": "Dynata",
-    "lightspeedresearch": "Lightspeed Research",
-    "toluna": "Toluna",
-    "netsuite": "NetSuite",
-    "salesforce": "Salesforce",
-    "hubspot": "HubSpot",
-    "junioradventuresgroup": "Junior Adventures Group",
-    "junioradventures": "Junior Adventures Group",
-    "jag": "Junior Adventures Group",
-}
+def _is_proper_name(name: str) -> bool:
+    """Check if a client name looks like a properly formatted business name
+    (as opposed to a raw domain-derived string like 'Junioradventuresgroup')."""
+    if not name or name == "Unknown":
+        return False
+    # Has a space → likely proper (e.g. "CPA Australia")
+    if " " in name:
+        return True
+    # All uppercase and short → likely an acronym (e.g. "ANZSOG", "IBM")
+    if name.isupper() and len(name) <= 6:
+        return True
+    # Single capitalised word that's short → likely fine (e.g. "Telstra", "Google")
+    if len(name) <= 12 and name[0].isupper():
+        return True
+    return False
 
 
 def _domain_to_client(email) -> str:
+    """Basic domain-to-name conversion. This is just a placeholder —
+    the AI classification will overwrite it with the proper business name."""
     if not email or "@" not in email:
         return "Unknown"
     domain = email.split("@", 1)[1].lower()
     base = domain.split(".")[0]
-
-    # Check exact match first
-    if base in _CLIENT_NAME_OVERRIDES:
-        return _CLIENT_NAME_OVERRIDES[base]
-
-    # Check if domain (without TLD) matches any override key
-    domain_no_tld = domain.rsplit(".", 1)[0] if "." in domain else domain
-    for key, name in _CLIENT_NAME_OVERRIDES.items():
-        if key in domain_no_tld:
-            return name
-
-    # Default: split on hyphens/dots and title-case
+    # Default: split on hyphens/underscores and title-case
     return " ".join(part.capitalize() for part in base.replace("-", " ").replace("_", " ").split())
 
 
@@ -934,15 +891,18 @@ def run_ai_classification(df, progress_callback=None):
         return df
 
     # Collect contacts that need classification
-    # Skip: auto-excluded AND already classified (from memory)
+    # Skip: auto-excluded AND already classified (from memory) with good names
     to_classify = []
     for idx, row in df.iterrows():
         # Skip auto-excluded
         if row.get("bd_relevant") is False and str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
             continue
-        # Skip already classified (restored from memory or previous run)
+        # Already classified — but re-classify if client name looks bad
         if row.get("bd_relevant") is not None:
-            continue
+            client_name = str(row.get("client_name", ""))
+            if _is_proper_name(client_name):
+                continue  # good name, skip
+            # Bad name — re-classify to get proper_company_name from AI
         to_classify.append((idx, row))
 
     total = len(to_classify)
