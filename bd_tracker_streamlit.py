@@ -9,6 +9,7 @@ from __future__ import annotations
 import html
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -589,33 +590,57 @@ IMPORTANT:
 Respond with ONLY a JSON object, no other text."""
 
 
-def _call_claude(system_prompt, user_prompt, max_tokens=512):
-    """Call Anthropic Messages API and return the text response."""
+def _call_claude(system_prompt, user_prompt, max_tokens=512, retries=2):
+    """Call Anthropic Messages API with retry and rate-limit handling."""
     if not ANTHROPIC_API_KEY:
         return None
 
-    resp = requests.post(
-        "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
-        json={
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": max_tokens,
-            "system": system_prompt,
-            "messages": [{"role": "user", "content": user_prompt}],
-        },
-        timeout=60,
-    )
-    if resp.status_code != 200:
-        log.warning("Claude API error %s: %s", resp.status_code, resp.text[:200])
-        return None
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": max_tokens,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_prompt}],
+                },
+                timeout=60,
+            )
 
-    data = resp.json()
-    text = data.get("content", [{}])[0].get("text", "")
-    return text
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data.get("content", [])
+                if content:
+                    return content[0].get("text", "")
+                return ""
+
+            # Rate limited or overloaded — wait and retry
+            if resp.status_code in (429, 529) and attempt < retries:
+                wait = float(resp.headers.get("retry-after", 3 * (attempt + 1)))
+                log.warning("Rate limited (attempt %d/%d), waiting %.1fs", attempt + 1, retries + 1, wait)
+                time.sleep(wait)
+                continue
+
+            log.warning("Claude API error %s: %s", resp.status_code, resp.text[:300])
+            return None
+
+        except requests.exceptions.Timeout:
+            if attempt < retries:
+                log.warning("Timeout (attempt %d/%d), retrying...", attempt + 1, retries + 1)
+                time.sleep(2)
+                continue
+            return None
+        except Exception as exc:
+            log.warning("Claude API exception: %s", exc)
+            return None
+
+    return None
 
 
 def _parse_json_response(text):
@@ -722,17 +747,21 @@ def run_ai_classification(df, progress_callback=None):
     if df.empty or not ANTHROPIC_API_KEY:
         return df
 
-    total = len(df)
+    # Only classify contacts that haven't been auto-excluded
+    to_classify = df[
+        ~((df["bd_relevant"] == False) & df["ai_reasoning"].str.startswith("Auto-excluded", na=False))
+    ]
+    total = len(to_classify)
     completed = 0
 
-    for idx, row in df.iterrows():
+    for idx, row in to_classify.iterrows():
         completed += 1
         if progress_callback:
             progress_callback(completed / total, f"Classifying {row['contact_name'] or row['counterparty_email']} ({completed}/{total})")
 
-        # Skip contacts already auto-excluded at sync time
-        if row.get("bd_relevant") is False and row.get("ai_reasoning", "").startswith("Auto-excluded"):
-            continue
+        # Pace API calls to avoid rate limiting
+        if completed > 1:
+            time.sleep(1.5)
 
         domain = row["counterparty_email"].split("@", 1)[1] if "@" in str(row.get("counterparty_email", "")) else ""
 
@@ -752,6 +781,7 @@ def run_ai_classification(df, progress_callback=None):
 
             # Step 2: Stage classification (only if BD relevant)
             if rel["bd_relevant"]:
+                time.sleep(1.5)
                 stage_result = classify_stage(
                     row.get("contact_name", ""),
                     row.get("counterparty_email", ""),
@@ -770,11 +800,8 @@ def run_ai_classification(df, progress_callback=None):
                 df.at[idx, "stage"] = "Not BD"
                 df.at[idx, "next_step"] = ""
         else:
-            # API failed for this contact — default to not relevant
-            df.at[idx, "bd_relevant"] = False
-            df.at[idx, "contact_type"] = "not_relevant"
-            df.at[idx, "stage"] = "Not BD"
-            df.at[idx, "ai_reasoning"] = "Classification failed — excluded by default."
+            # API failed — leave as unclassified so user can see it
+            df.at[idx, "ai_reasoning"] = "API call failed — contact left unclassified."
 
     return df
 
@@ -830,10 +857,12 @@ Write in a neutral, professional tone. No bullet points — flowing prose only. 
     user_prompt = f"""Here is the current BD pipeline snapshot after AI classification:\n\n{snapshot}\n\nWrite a concise pipeline summary."""
 
     try:
-        text = _call_claude(system_prompt, user_prompt, max_tokens=1024)
+        # Wait before summary call to avoid rate limiting after classification
+        time.sleep(3)
+        text = _call_claude(system_prompt, user_prompt, max_tokens=1024, retries=3)
         if text and text.strip():
             return text.strip()
-        return "Pipeline summary could not be generated — AI returned an empty response."
+        return "Pipeline summary could not be generated — the AI returned an empty response. This is usually due to API rate limiting. Try clicking Classify AI again."
     except Exception as exc:
         log.warning("Pipeline summary generation failed: %s", exc)
         return f"Pipeline summary could not be generated — {exc}"
@@ -923,13 +952,9 @@ def apply_filters(df, search, stage, sort, show_excluded):
 
     # Hide non-BD contacts unless "Show excluded" is checked
     if not show_excluded and "bd_relevant" in filtered.columns:
-        classification_ran = st.session_state.get("last_classify") is not None
-        if classification_ran:
-            # After AI classification: only show confirmed BD-relevant
-            filtered = filtered[filtered["bd_relevant"].fillna(False).astype(bool)]
-        else:
-            # Before AI classification: hide auto-excluded, show Pending
-            filtered = filtered[filtered["bd_relevant"].fillna(True).astype(bool)]
+        # Always hide contacts explicitly marked as not relevant (False)
+        # Always show contacts marked as relevant (True) or unclassified (None)
+        filtered = filtered[filtered["bd_relevant"].fillna(True).astype(bool)]
 
     if search:
         mask = filtered.astype(str).apply(
