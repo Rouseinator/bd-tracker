@@ -659,149 +659,136 @@ def _parse_json_response(text):
         return None
 
 
-def classify_relevance(contact_name, email, domain, thread_data_json):
-    """Classify a single contact's BD relevance using Claude."""
-    thread_data = json.loads(thread_data_json) if isinstance(thread_data_json, str) else thread_data_json
+AI_BATCH_SYSTEM = AI_RELEVANCE_SYSTEM + """
 
-    thread_summary = ""
+For contacts that ARE bd_relevant, also classify their pipeline stage.
+
+The stages are:
+1. Outreach - Initial contact or re-engagement. No substantive two-way conversation yet.
+2. In Conversation - Active two-way engagement. Catch-ups, coffees, meetings, relationship building. No formal proposal or scope yet.
+3. Proposal - A proposal, scope, fee estimate, or pricing discussion is underway.
+4. Commissioned - The client has explicitly agreed to proceed. Clear commissioning language.
+5. Active Project - Ongoing delivery of commissioned work. Status updates, deliverables.
+6. Dormant - Thread has gone quiet. Previous engagement but no recent activity.
+7. Closed - Opportunity was explicitly declined, lost, or deferred.
+
+IMPORTANT:
+- A "coffee", "catch up", "chat", or "meeting" is "In Conversation", not Proposal.
+- "Proposal" requires actual discussion of scope, fees, deliverables.
+- "Commissioned" requires explicit agreement to proceed.
+
+Respond with ONLY a JSON array, no other text."""
+
+BATCH_SIZE = 5
+
+
+def _build_thread_summary(thread_data_json):
+    """Build a text summary from thread data."""
+    thread_data = json.loads(thread_data_json) if isinstance(thread_data_json, str) else thread_data_json
+    summary = ""
     for msg in thread_data:
         direction = "SENT" if msg["direction"] == "outbound" else "RECEIVED"
-        thread_summary += f"[{direction}] {msg['date']}\n"
-        thread_summary += f"Subject: {msg['subject']}\n"
-        thread_summary += f"Preview: {msg['preview']}\n\n"
+        summary += f"[{direction}] {msg['date']}\n"
+        summary += f"Subject: {msg['subject']}\n"
+        summary += f"Preview: {msg['preview']}\n\n"
+    return summary, len(thread_data)
 
-    user_prompt = f"""Classify this email thread for BD relevance.
 
-Contact: {contact_name}
-Email: {email}
+def _classify_batch(batch_rows):
+    """Classify a batch of contacts in a single API call."""
+    contacts_text = ""
+    for i, (idx, row) in enumerate(batch_rows):
+        domain = row["counterparty_email"].split("@", 1)[1] if "@" in str(row.get("counterparty_email", "")) else ""
+        thread_summary, msg_count = _build_thread_summary(row.get("thread_data", "[]"))
+        contacts_text += f"""--- CONTACT {i + 1} ---
+Contact: {row.get('contact_name', '')}
+Email: {row.get('counterparty_email', '')}
 Domain: {domain}
 
-Thread ({len(thread_data)} messages):
+Thread ({msg_count} messages):
 {thread_summary}
-
-Respond with this exact JSON structure:
-{{
-  "bd_relevant": true or false,
-  "contact_type": "current_client" | "prospective_client" | "former_client" | "not_relevant",
-  "confidence": 0.0 to 1.0,
-  "reasoning": "One or two sentences explaining why this thread is or is not relevant to client BD."
-}}"""
-
-    text = _call_claude(AI_RELEVANCE_SYSTEM, user_prompt)
-    result = _parse_json_response(text)
-    if not result:
-        return None
-    return {
-        "bd_relevant": result.get("bd_relevant", False),
-        "contact_type": result.get("contact_type", "not_relevant"),
-        "ai_confidence": result.get("confidence", 0.0),
-        "ai_reasoning": result.get("reasoning", ""),
-    }
-
-
-def classify_stage(contact_name, email, thread_data_json):
-    """Classify the BD pipeline stage using Claude."""
-    thread_data = json.loads(thread_data_json) if isinstance(thread_data_json, str) else thread_data_json
-
-    thread_summary = ""
-    for msg in thread_data:
-        direction = "SENT" if msg["direction"] == "outbound" else "RECEIVED"
-        thread_summary += f"[{direction}] {msg['date']}\n"
-        thread_summary += f"Subject: {msg['subject']}\n"
-        thread_summary += f"Preview: {msg['preview']}\n\n"
+"""
 
     stages_str = ", ".join(STAGE_ORDER)
 
-    user_prompt = f"""Classify the BD pipeline stage for this email thread.
+    user_prompt = f"""Classify these {len(batch_rows)} email threads.
 
-Contact: {contact_name}
-Email: {email}
+{contacts_text}
 
-Thread ({len(thread_data)} messages):
-{thread_summary}
-
-Available stages: {stages_str}
-
-Respond with this exact JSON structure:
+For EACH contact, respond with a JSON object inside a JSON array. Each object must have:
 {{
-  "stage": "one of the stages listed above",
+  "contact_index": 1-based index matching the CONTACT number above,
+  "bd_relevant": true or false,
+  "contact_type": "current_client" | "prospective_client" | "former_client" | "not_relevant",
   "confidence": 0.0 to 1.0,
-  "reasoning": "One or two sentences explaining why this stage was chosen.",
-  "next_step": "A specific, actionable next step for this thread."
-}}"""
+  "reasoning": "One or two sentences on why this is or is not BD relevant.",
+  "stage": "one of: {stages_str}" (only if bd_relevant is true, otherwise "Not BD"),
+  "stage_reasoning": "One or two sentences on why this stage was chosen." (only if bd_relevant),
+  "next_step": "A specific, actionable next step." (only if bd_relevant, otherwise "")
+}}
 
-    text = _call_claude(AI_STAGE_SYSTEM, user_prompt)
-    result = _parse_json_response(text)
-    if not result:
-        return None
-    return {
-        "stage": result.get("stage", "Pending"),
-        "ai_confidence": result.get("confidence", 0.0),
-        "ai_stage_reasoning": result.get("reasoning", ""),
-        "next_step": result.get("next_step", ""),
-    }
+Respond with ONLY the JSON array, no other text."""
+
+    text = _call_claude(AI_BATCH_SYSTEM, user_prompt, max_tokens=2048)
+    return _parse_json_response(text)
 
 
 def run_ai_classification(df, progress_callback=None):
-    """Run AI classification on all contacts in the tracker DataFrame."""
+    """Run AI classification on all contacts using batched API calls."""
     if df.empty or not ANTHROPIC_API_KEY:
         return df
 
-    # Only classify contacts that haven't been auto-excluded
-    to_classify = df[
-        ~((df["bd_relevant"] == False) & df["ai_reasoning"].str.startswith("Auto-excluded", na=False))
-    ]
+    # Collect contacts that need classification (skip auto-excluded)
+    to_classify = []
+    for idx, row in df.iterrows():
+        if row.get("bd_relevant") is False and str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+            continue
+        to_classify.append((idx, row))
+
     total = len(to_classify)
+    if total == 0:
+        return df
+
+    # Process in batches
     completed = 0
+    for batch_start in range(0, total, BATCH_SIZE):
+        batch = to_classify[batch_start:batch_start + BATCH_SIZE]
+        batch_end = min(batch_start + BATCH_SIZE, total)
 
-    for idx, row in to_classify.iterrows():
-        completed += 1
         if progress_callback:
-            progress_callback(completed / total, f"Classifying {row['contact_name'] or row['counterparty_email']} ({completed}/{total})")
+            names = ", ".join(r["contact_name"] or r["counterparty_email"] for _, r in batch)
+            progress_callback(batch_end / total, f"Classifying batch {batch_start // BATCH_SIZE + 1} ({batch_end}/{total}): {names[:80]}")
 
-        # Pace API calls to avoid rate limiting
-        if completed > 1:
-            time.sleep(1.5)
+        # Pace between batches
+        if batch_start > 0:
+            time.sleep(2)
 
-        domain = row["counterparty_email"].split("@", 1)[1] if "@" in str(row.get("counterparty_email", "")) else ""
+        results = _classify_batch(batch)
 
-        # Step 1: BD relevance
-        rel = classify_relevance(
-            row.get("contact_name", ""),
-            row.get("counterparty_email", ""),
-            domain,
-            row.get("thread_data", "[]"),
-        )
+        if results and isinstance(results, list):
+            for result in results:
+                ci = result.get("contact_index", 0) - 1
+                if 0 <= ci < len(batch):
+                    idx = batch[ci][0]
+                    bd_relevant = result.get("bd_relevant", False)
+                    df.at[idx, "bd_relevant"] = bd_relevant
+                    df.at[idx, "contact_type"] = result.get("contact_type", "not_relevant")
+                    df.at[idx, "ai_confidence"] = result.get("confidence", 0.0)
+                    df.at[idx, "ai_reasoning"] = result.get("reasoning", "")
 
-        if rel:
-            df.at[idx, "bd_relevant"] = rel["bd_relevant"]
-            df.at[idx, "contact_type"] = rel["contact_type"]
-            df.at[idx, "ai_confidence"] = rel["ai_confidence"]
-            df.at[idx, "ai_reasoning"] = rel["ai_reasoning"]
-
-            # Step 2: Stage classification (only if BD relevant)
-            if rel["bd_relevant"]:
-                time.sleep(1.5)
-                stage_result = classify_stage(
-                    row.get("contact_name", ""),
-                    row.get("counterparty_email", ""),
-                    row.get("thread_data", "[]"),
-                )
-                if stage_result:
-                    df.at[idx, "stage"] = stage_result["stage"]
-                    df.at[idx, "ai_stage_reasoning"] = stage_result["ai_stage_reasoning"]
-                    df.at[idx, "next_step"] = stage_result["next_step"]
-                    stage_conf = stage_result.get("ai_confidence", 0)
-                    df.at[idx, "ai_confidence"] = round(
-                        (rel["ai_confidence"] + stage_conf) / 2, 2
-                    )
-            else:
-                # Not BD relevant — mark stage clearly
-                df.at[idx, "stage"] = "Not BD"
-                df.at[idx, "next_step"] = ""
+                    if bd_relevant:
+                        df.at[idx, "stage"] = result.get("stage", "Pending")
+                        df.at[idx, "ai_stage_reasoning"] = result.get("stage_reasoning", "")
+                        df.at[idx, "next_step"] = result.get("next_step", "")
+                    else:
+                        df.at[idx, "stage"] = "Not BD"
+                        df.at[idx, "next_step"] = ""
         else:
-            # API failed — leave as unclassified so user can see it
-            df.at[idx, "ai_reasoning"] = "API call failed — contact left unclassified."
+            # Batch failed — mark contacts as unclassified
+            for idx, row in batch:
+                df.at[idx, "ai_reasoning"] = "Batch API call failed — contact left unclassified."
+
+        completed = batch_end
 
     return df
 
