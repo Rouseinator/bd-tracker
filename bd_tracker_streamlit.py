@@ -497,9 +497,8 @@ def build_tracker(messages, owner):
         latest = group[-1]
         latest_subject = latest.get("subject", "")
 
-        # Pre-filter: skip obviously non-BD contacts at sync time
-        if _is_auto_excluded(email, latest_subject):
-            continue
+        # Check if this contact is obviously non-BD (automated, system, etc.)
+        auto_excluded = _is_auto_excluded(email, latest_subject)
 
         # Build thread summary for AI classification
         thread_data = []
@@ -516,17 +515,17 @@ def build_tracker(messages, owner):
             "contact_name": latest.get("contact_name", ""),
             "counterparty_email": email,
             "owner": owner,
-            "stage": "Pending",
+            "stage": "Not BD" if auto_excluded else "Pending",
             "last_touch": latest.get("datetime"),
             "days_since_touch": _derive_days(latest.get("datetime")),
             "latest_subject": latest_subject,
-            "next_step": "Run AI classification to determine stage.",
+            "next_step": "" if auto_excluded else "Run AI classification to determine stage.",
             "notes": latest.get("preview", ""),
             "thread_data": json.dumps(thread_data),
-            "contact_type": "",
-            "bd_relevant": None,
-            "ai_confidence": None,
-            "ai_reasoning": "",
+            "contact_type": "not_relevant" if auto_excluded else "",
+            "bd_relevant": False if auto_excluded else None,
+            "ai_confidence": 1.0 if auto_excluded else None,
+            "ai_reasoning": "Auto-excluded: automated sender, system notification, or known non-client domain." if auto_excluded else "",
             "ai_stage_reasoning": "",
         })
 
@@ -730,6 +729,10 @@ def run_ai_classification(df, progress_callback=None):
         if progress_callback:
             progress_callback(completed / total, f"Classifying {row['contact_name'] or row['counterparty_email']} ({completed}/{total})")
 
+        # Skip contacts already auto-excluded at sync time
+        if row.get("bd_relevant") is False and row.get("ai_reasoning", "").startswith("Auto-excluded"):
+            continue
+
         domain = row["counterparty_email"].split("@", 1)[1] if "@" in str(row.get("counterparty_email", "")) else ""
 
         # Step 1: BD relevance
@@ -917,16 +920,15 @@ def apply_filters(df, search, stage, sort, show_excluded):
 
     filtered = df.copy()
 
-    # After AI classification has been run, only show BD-relevant contacts
-    # (hide both non-relevant AND any that failed to classify)
-    classification_ran = st.session_state.get("last_classify") is not None
+    # Hide non-BD contacts unless "Show excluded" is checked
     if not show_excluded and "bd_relevant" in filtered.columns:
+        classification_ran = st.session_state.get("last_classify") is not None
         if classification_ran:
-            # Strict mode: only show contacts confirmed as BD-relevant
+            # After AI classification: only show confirmed BD-relevant
             filtered = filtered[filtered["bd_relevant"].fillna(False).astype(bool)]
         else:
-            # Before classification: show everything (all are Pending)
-            pass
+            # Before AI classification: hide auto-excluded, show Pending
+            filtered = filtered[filtered["bd_relevant"].fillna(True).astype(bool)]
 
     if search:
         mask = filtered.astype(str).apply(
