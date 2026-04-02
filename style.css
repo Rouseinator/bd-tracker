@@ -119,11 +119,11 @@ div[data-testid="stSidebar"] { display: none !important; }
 }
 
 .section-header-hint {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     font-weight: 400;
     text-transform: none;
     letter-spacing: 0;
-    color: #8090a7;
+    color: #96a5b8;
     margin-left: 10px;
     font-style: italic;
 }
@@ -156,11 +156,13 @@ div[data-testid="stSidebar"] { display: none !important; }
     bottom: calc(100% + 10px);
     left: 50%;
     transform: translateX(-50%);
-    background: #1a2236;
-    border: 1px solid rgba(94,198,193,0.2);
+    background: #0f1524;
+    border: 1px solid rgba(94,198,193,0.25);
     border-radius: 10px;
     padding: 12px 16px;
     font-size: 0.78rem;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     font-weight: 400;
     color: #c8d0de;
     line-height: 1.55;
@@ -181,7 +183,7 @@ div[data-testid="stSidebar"] { display: none !important; }
     transform: translateX(-50%);
     border-left: 6px solid transparent;
     border-right: 6px solid transparent;
-    border-top: 6px solid #1a2236;
+    border-top: 6px solid #0f1524;
 }
 .pipeline-stage:hover .pipeline-tooltip {
     visibility: visible;
