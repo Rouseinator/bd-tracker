@@ -23,7 +23,7 @@
 
 /* Hide Streamlit chrome */
 #MainMenu { visibility: hidden; }
-header[data-testid="stHeader"] { background: transparent !important; }
+header[data-testid="stHeader"] { background: transparent !important; pointer-events: none; height: 0 !important; }
 footer { visibility: hidden; }
 div[data-testid="stSidebar"] { display: none !important; }
 
