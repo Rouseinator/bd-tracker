@@ -940,12 +940,12 @@ def apply_filters(df, search, stage, sort, show_excluded):
         filtered = filtered[filtered["stage"] == stage]
 
     sort_map = {
-        "Most recent": ("days_since_touch", True),
-        "Oldest first": ("days_since_touch", False),
+        "Most recent": ("last_touch", False),
+        "Oldest first": ("last_touch", True),
         "Client A\u2013Z": ("client_name", True),
         "Stage": ("stage", True),
     }
-    col, asc = sort_map.get(sort, ("days_since_touch", True))
+    col, asc = sort_map.get(sort, ("last_touch", False))
     filtered = filtered.sort_values(col, ascending=asc, na_position="last")
 
     return filtered
