@@ -133,6 +133,7 @@ div[data-testid="stSidebar"] { display: none !important; }
     padding: 12px 4px 10px;
     border: 1px solid transparent;
     transition: opacity 0.2s;
+    cursor: help;
 }
 .pipeline-stage.zero {
     opacity: 0.3;

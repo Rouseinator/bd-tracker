@@ -63,6 +63,16 @@ STAGE_ORDER = [
     "Closed",
 ]
 
+STAGE_DEFINITIONS = {
+    "Outreach": "Initial contact or re-engagement. Message sent but no reply yet, or first-time contact with no two-way exchange.",
+    "In Conversation": "Active two-way exchange \u2014 catch-ups, coffees, meetings, exploring needs. No mention of scope, fees, or proposals yet.",
+    "Proposal": "Any discussion of scope, fees, pricing, quotes, budgets, deliverables, or formal project outlines. Includes both requesting and sending proposals.",
+    "Commissioned": "Client has explicitly agreed to proceed \u2014 \u201clet\u2019s go ahead\u201d, PO attached, contract signed, budget approved.",
+    "Active Project": "Work is underway. Deliverables being produced, status updates, data sharing, draft reports, fieldwork in progress.",
+    "Dormant": "Thread has gone quiet \u2014 last message is 21+ days old with no reply, or the conversation visibly stalled.",
+    "Closed": "Opportunity explicitly declined or lost \u2014 \u201cdecided to go another direction\u201d, \u201cnot proceeding\u201d, \u201cbudget was cut\u201d.",
+}
+
 STAGE_STYLES = {
     "Outreach":        ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
     "In Conversation": ("#bbffe3", "rgba(126,240,194,0.10)", "rgba(126,240,194,0.22)"),
@@ -1026,9 +1036,10 @@ def _pill_html(stage):
     fg, bg, border = STAGE_STYLES.get(
         stage, ("#b9d1ff", "rgba(110,168,254,0.10)", "rgba(110,168,254,0.22)"),
     )
+    tooltip = _esc(STAGE_DEFINITIONS.get(stage, ""))
     return (
         f'<span class="pill" style="color:{fg};background:{bg};'
-        f'border-color:{border};">{_esc(stage)}</span>'
+        f'border-color:{border};" title="{tooltip}">{_esc(stage)}</span>'
     )
 
 
@@ -1280,10 +1291,12 @@ def render_pipeline_bar(df):
     for stage in STAGE_ORDER:
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
+        tooltip = _esc(STAGE_DEFINITIONS.get(stage, ""))
         zero_class = " zero" if count == 0 else ""
         blocks.append(
             f'<div class="pipeline-stage{zero_class}" '
-            f'style="border-color:{border};background:{bg};">'
+            f'style="border-color:{border};background:{bg};" '
+            f'title="{tooltip}">'
             f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
             f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
             f'</div>'
