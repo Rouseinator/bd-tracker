@@ -401,6 +401,7 @@ _CLIENT_NAME_OVERRIDES = {
     "deakin": "Deakin University",
     "latrobe": "La Trobe University",
     "swinburne": "Swinburne University",
+    "swin": "Swinburne University",
     "anzsog": "ANZSOG",
     "csiro": "CSIRO",
     "abc": "ABC",
@@ -433,6 +434,9 @@ _CLIENT_NAME_OVERRIDES = {
     "netsuite": "NetSuite",
     "salesforce": "Salesforce",
     "hubspot": "HubSpot",
+    "junioradventuresgroup": "Junior Adventures Group",
+    "junioradventures": "Junior Adventures Group",
+    "jag": "Junior Adventures Group",
 }
 
 
@@ -1051,6 +1055,13 @@ Write a brief, factual pipeline summary (3-5 sentences) based purely on the data
 - Any contacts where there has been no activity for an extended period
 
 IMPORTANT: Be strictly factual. Do NOT make judgments, opinions, or assessments like "concerning", "lacks depth", "impressive", "needs improvement", "healthy", or "at risk". Simply report the facts and let the reader draw their own conclusions.
+
+IMPORTANT: Always use proper, correctly formatted business names. For example:
+- "Swin" or "Swinburne" should be "Swinburne University of Technology"
+- "Cpaaustralia" should be "CPA Australia"
+- "Unimelb" should be "University of Melbourne"
+- "Anzsog" should be "ANZSOG"
+- Domain-derived abbreviations should be expanded to the full, properly capitalised organisation name.
 
 Write in a neutral, professional tone. No bullet points — flowing prose only. Do not use any markdown formatting."""
 
