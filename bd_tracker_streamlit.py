@@ -936,12 +936,12 @@ def apply_filters(df, search, stage, sort, show_excluded):
         filtered = filtered[filtered["stage"] == stage]
 
     sort_map = {
-        "Days since touch (newest)": ("days_since_touch", False),
-        "Days since touch (oldest)": ("days_since_touch", True),
+        "Most recent": ("days_since_touch", True),
+        "Oldest first": ("days_since_touch", False),
         "Client A\u2013Z": ("client_name", True),
         "Stage": ("stage", True),
     }
-    col, asc = sort_map.get(sort, ("days_since_touch", False))
+    col, asc = sort_map.get(sort, ("days_since_touch", True))
     filtered = filtered.sort_values(col, ascending=asc, na_position="last")
 
     return filtered
@@ -1157,8 +1157,8 @@ def render_filter_bar(df):
         sort = st.selectbox(
             "Sort",
             [
-                "Days since touch (newest)",
-                "Days since touch (oldest)",
+                "Most recent",
+                "Oldest first",
                 "Client A\u2013Z",
                 "Stage",
             ],
