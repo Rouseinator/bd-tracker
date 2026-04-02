@@ -136,12 +136,12 @@ div[data-testid="stSidebar"] { display: none !important; }
     transition: opacity 0.2s;
 }
 
-/* Pipeline header row */
-.pipeline-header-row {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
+/* Pipeline header block */
+.pipeline-header-block {
     margin-bottom: 10px;
+}
+.pipeline-header-row {
+    margin-bottom: 2px;
 }
 
 /* Stage definitions legend */
@@ -173,15 +173,19 @@ div[data-testid="stSidebar"] { display: none !important; }
     flex-direction: column;
     gap: 0;
     margin-top: 8px;
-    padding: 8px 0;
+    padding: 12px 16px;
+    background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
     margin-bottom: 4px;
 }
 .stage-legend-item {
     display: flex;
     gap: 8px;
     align-items: baseline;
-    padding: 5px 0;
+    padding: 6px 0;
     border-bottom: 1px solid rgba(255,255,255,0.04);
+    position: relative;
 }
 .stage-legend-item:last-child {
     border-bottom: none;
@@ -198,6 +202,20 @@ div[data-testid="stSidebar"] { display: none !important; }
     color: #a0aec0;
     line-height: 1.5;
     flex: 1;
+}
+.stage-legend-num {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: #4a5568;
+    min-width: 12px;
+    text-align: center;
+}
+.stage-legend-arrow {
+    color: #384050;
+    font-size: 0.6rem;
+    position: absolute;
+    left: 2px;
+    bottom: -4px;
 }
 .pipeline-stage.zero {
     opacity: 0.3;

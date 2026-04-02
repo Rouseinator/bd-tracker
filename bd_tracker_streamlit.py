@@ -1282,20 +1282,27 @@ def render_top_nav():
 def render_pipeline_bar(df):
     # Build stage definitions legend items
     legend_items = ""
-    for stage in STAGE_ORDER:
+    for i, stage in enumerate(STAGE_ORDER):
         fg = STAGE_STYLES[stage][0]
         defn = _esc(STAGE_DEFINITIONS.get(stage, ""))
+        num = i + 1
+        arrow = ' <span class="stage-legend-arrow">↓</span>' if i < len(STAGE_ORDER) - 1 else ""
         legend_items += (
             f'<div class="stage-legend-item">'
+            f'<span class="stage-legend-num">{num}</span>'
             f'<span class="stage-legend-name" style="color:{fg};">{_esc(stage)}</span>'
             f'<span class="stage-legend-desc">{defn}</span>'
+            f'{arrow}'
             f'</div>'
         )
 
-    # Pipeline header with inline stage definitions toggle
+    # Pipeline header + stage definitions as a single block
+    # The <details> sits BELOW the title row so it expands full-width
     st.markdown(
+        f'<div class="pipeline-header-block">'
         f'<div class="pipeline-header-row">'
         f'<span class="section-header" style="margin-bottom:0;">BD Pipeline Overview</span>'
+        f'</div>'
         f'<details class="stage-legend">'
         f'<summary>Stage definitions</summary>'
         f'<div class="stage-legend-grid">{legend_items}</div>'
