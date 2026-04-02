@@ -438,6 +438,8 @@ _JUNK_SUBJECT_PATTERNS = [
     "sunday phd", "monday phd", "weekly phd",
     "new pay slip", "your payslip",
     "reaction daily digest", "reaction weekly",
+    "what's on this month", "whats on this month",
+    "building update", "building notice",
 ]
 
 
