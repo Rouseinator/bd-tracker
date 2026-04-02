@@ -543,12 +543,15 @@ AI_RELEVANCE_SYSTEM = """You are an AI assistant for Forethought Outcomes, a mar
 
 Forethought's CLIENTS are organisations (brands, government agencies, NFPs, corporations) that commission market research, insights, strategy, or consulting work from Forethought.
 
-Your job: decide whether an email thread represents communication with a CLIENT or PROSPECTIVE CLIENT. Be very strict. When in doubt, mark as not relevant.
+Your job: decide whether an email thread represents communication with a CLIENT or PROSPECTIVE CLIENT.
 
 INCLUDE (bd_relevant = true):
 - Current clients who have commissioned or are discussing research/consulting work
 - Prospective clients Forethought is reaching out to about potential engagements
 - Former clients who previously commissioned work (mark as former_client)
+- Government agencies, universities, NFPs, corporates, or any other organisation that commissions (or could commission) research, insights, or consulting from Forethought
+- Anyone Forethought is building a relationship with for potential future work, even if the conversation is early or informal (e.g. catch-ups, coffees, intros)
+- When in doubt about whether a contact is a potential client, lean towards INCLUDING them — it is better to include a borderline contact than to miss a real one
 
 EXCLUDE (bd_relevant = false) — these are NOT clients:
 - FIELDWORK HOUSES and research panel providers (e.g. PureProfile, Lightspeed, Dynata, Qualtrics panels, The Research Shop, fieldwork agencies, anyone providing data collection, sample, panel recruitment, or survey hosting services TO Forethought)
@@ -556,12 +559,10 @@ EXCLUDE (bd_relevant = false) — these are NOT clients:
 - IT support, security alerts, system notifications (e.g. Microsoft Security, password resets, account alerts)
 - RECRUITMENT contacts, job applicants, staffing agencies
 - OTHER SUPPLIERS or vendors providing services TO Forethought (design agencies, printers, accountants, lawyers, office suppliers)
-- Promotional emails, newsletters, marketing, event invitations from non-clients
-- Industry bodies, associations, conference organisers (unless they are also a paying client)
-- Personal or social emails unrelated to BD
+- Promotional emails, newsletters, marketing where there is no personal relationship or BD conversation
 - Automated notifications from any system
 
-KEY TEST: Is this person/organisation someone who PAYS (or could pay) Forethought for research, insights, or consulting services? If they provide services TO Forethought, or are a platform/tool, they are NOT a client.
+KEY TEST: Is this person/organisation someone who PAYS (or could pay) Forethought for research, insights, or consulting services? If they provide services TO Forethought, or are a platform/tool, they are NOT a client. But if they COULD be a buyer of Forethought's services (including government, universities, NFPs, corporates), include them.
 
 Respond with ONLY a JSON object, no other text."""
 
@@ -588,7 +589,7 @@ IMPORTANT:
 Respond with ONLY a JSON object, no other text."""
 
 
-def _call_claude(system_prompt, user_prompt):
+def _call_claude(system_prompt, user_prompt, max_tokens=512):
     """Call Anthropic Messages API and return the text response."""
     if not ANTHROPIC_API_KEY:
         return None
@@ -602,7 +603,7 @@ def _call_claude(system_prompt, user_prompt):
         },
         json={
             "model": "claude-sonnet-4-20250514",
-            "max_tokens": 512,
+            "max_tokens": max_tokens,
             "system": system_prompt,
             "messages": [{"role": "user", "content": user_prompt}],
         },
@@ -829,7 +830,7 @@ Write in a neutral, professional tone. No bullet points — flowing prose only. 
     user_prompt = f"""Here is the current BD pipeline snapshot after AI classification:\n\n{snapshot}\n\nWrite a concise pipeline summary."""
 
     try:
-        text = _call_claude(system_prompt, user_prompt)
+        text = _call_claude(system_prompt, user_prompt, max_tokens=1024)
         if text and text.strip():
             return text.strip()
         return "Pipeline summary could not be generated — AI returned an empty response."
