@@ -845,18 +845,13 @@ def render_auth_screen():
 
         if not st.session_state.device_flow:
             st.markdown(
-                f"""
-                <div class="auth-outer">
-                <div class="auth-card">
-                    <div class="auth-logo">{logo}</div>
-                    <div class="auth-title">BD Tracker</div>
-                    <div class="auth-subtitle">
-                        Connect your Microsoft account to sync Outlook
-                        and track client business development activity.
-                    </div>
-                </div>
-                </div>
-                """,
+                f'<div class="auth-outer"><div class="auth-card">'
+                f'<div class="auth-logo">{logo}</div>'
+                f'<div class="auth-title">BD Tracker</div>'
+                f'<div class="auth-subtitle">'
+                f'Connect your Microsoft account to sync Outlook '
+                f'and track client business development activity.'
+                f'</div></div></div>',
                 unsafe_allow_html=True,
             )
             if st.button(
@@ -881,25 +876,19 @@ def render_auth_screen():
         else:
             code = st.session_state.user_code or "--------"
             st.markdown(
-                f"""
-                <div class="auth-outer">
-                <div class="auth-card">
-                    <div class="auth-logo">{logo}</div>
-                    <div class="auth-title">Enter the code below</div>
-                    <div class="auth-subtitle">
-                        Go to the Microsoft login page, enter this code,
-                        and complete sign-in. Then return here.
-                    </div>
-                    <div class="device-code-display">{_esc(code)}</div>
-                    <div class="auth-instruction">
-                        Open
-                        <a href="https://microsoft.com/devicelogin"
-                           target="_blank">microsoft.com/devicelogin</a>
-                        and enter the code above.
-                    </div>
-                </div>
-                </div>
-                """,
+                f'<div class="auth-outer"><div class="auth-card">'
+                f'<div class="auth-logo">{logo}</div>'
+                f'<div class="auth-title">Enter the code below</div>'
+                f'<div class="auth-subtitle">'
+                f'Go to the Microsoft login page, enter this code, '
+                f'and complete sign-in. Then return here.'
+                f'</div>'
+                f'<div class="device-code-display">{_esc(code)}</div>'
+                f'<div class="auth-instruction">'
+                f'Open <a href="https://microsoft.com/devicelogin" '
+                f'target="_blank">microsoft.com/devicelogin</a> '
+                f'and enter the code above.'
+                f'</div></div></div>',
                 unsafe_allow_html=True,
             )
             if st.button(
@@ -924,7 +913,7 @@ def render_auth_screen():
 
 
 def render_top_nav():
-    left, mid, right = st.columns([2.5, 3, 2])
+    left, right = st.columns([3, 4])
 
     with left:
         st.markdown(
@@ -932,16 +921,15 @@ def render_top_nav():
             unsafe_allow_html=True,
         )
 
-    with mid:
-        st.markdown(
-            f'<div class="nav-account" style="text-align:center;">'
-            f'{_esc(st.session_state.account_label)}</div>',
-            unsafe_allow_html=True,
-        )
-
     with right:
-        c1, c2, c3 = st.columns(3)
+        c1, c2, c3, c4 = st.columns([2.5, 2.5, 2.5, 1.5])
         with c1:
+            st.markdown(
+                f'<div class="nav-account">'
+                f'{_esc(st.session_state.account_label)}</div>',
+                unsafe_allow_html=True,
+            )
+        with c2:
             if st.button("Sync Outlook", type="primary", use_container_width=True):
                 with st.spinner("Syncing\u2026"):
                     try:
@@ -949,7 +937,7 @@ def render_top_nav():
                         st.rerun()
                     except Exception as exc:
                         st.error(str(exc))
-        with c2:
+        with c3:
             has_data = not st.session_state.tracker_df.empty
             ai_ready = bool(ANTHROPIC_API_KEY) and has_data
             if st.button(
@@ -970,7 +958,7 @@ def render_top_nav():
                 except Exception as exc:
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
-        with c3:
+        with c4:
             if st.button("Sign out", use_container_width=True):
                 sign_out()
                 st.rerun()
@@ -1062,16 +1050,13 @@ def render_filter_bar(df):
 def render_contact_cards(df):
     if df.empty:
         st.markdown(
-            """
-            <div class="empty-state">
-                <div class="empty-state-icon">\U0001F4ED</div>
-                <div class="empty-state-title">No contacts to display</div>
-                <div class="empty-state-desc">
-                    Sync your Outlook to pull in recent client communications,
-                    or adjust your filters above.
-                </div>
-            </div>
-            """,
+            '<div class="empty-state">'
+            '<div class="empty-state-icon">\U0001F4ED</div>'
+            '<div class="empty-state-title">No contacts to display</div>'
+            '<div class="empty-state-desc">'
+            'Sync your Outlook to pull in recent client communications, '
+            'or adjust your filters above.'
+            '</div></div>',
             unsafe_allow_html=True,
         )
         return
@@ -1125,42 +1110,42 @@ def render_contact_cards(df):
         if bd_relevant is False:
             card_class += " contact-card-excluded"
 
-        card_html = f"""
-        <div class="{card_class}">
-            <div class="contact-card-header">
-                <div class="contact-card-left">
-                    <span class="contact-card-client">{_esc(row.get('client_name', ''))}</span>
-                    <span class="contact-card-name">{_esc(row.get('contact_name', ''))}</span>
-                </div>
-                <div class="contact-card-right">
-                    {_contact_type_pill(contact_type)}
-                    {_pill_html(stage)}
-                    {_days_html(days)}
-                </div>
-            </div>
-            <div class="contact-card-subject">{_esc(row.get('latest_subject', ''))}</div>
-            <div class="contact-card-meta">
-                <div class="contact-card-next">{_esc(row.get('next_step', ''))}</div>
-            </div>
-            <details class="card-details">
-                <summary>View details</summary>
-                <div class="card-detail-row">
-                    <span class="card-detail-label">Email</span>
-                    <span class="card-detail-value">{_esc(row.get('counterparty_email', ''))}</span>
-                </div>
-                <div class="card-detail-row">
-                    <span class="card-detail-label">Owner</span>
-                    <span class="card-detail-value">{_esc(row.get('owner', ''))}</span>
-                </div>
-                <div class="card-detail-row">
-                    <span class="card-detail-label">Last touch</span>
-                    <span class="card-detail-value">{date_str}</span>
-                </div>
-                <div class="card-detail-notes">{_esc(notes_text)}</div>
-                {ai_section}
-            </details>
-        </div>
-        """
+        card_html = (
+            f'<div class="{card_class}">'
+            f'<div class="contact-card-header">'
+            f'<div class="contact-card-left">'
+            f'<span class="contact-card-client">{_esc(row.get("client_name", ""))}</span>'
+            f'<span class="contact-card-name">{_esc(row.get("contact_name", ""))}</span>'
+            f'</div>'
+            f'<div class="contact-card-right">'
+            f'{_contact_type_pill(contact_type)}'
+            f'{_pill_html(stage)}'
+            f'{_days_html(days)}'
+            f'</div>'
+            f'</div>'
+            f'<div class="contact-card-subject">{_esc(row.get("latest_subject", ""))}</div>'
+            f'<div class="contact-card-meta">'
+            f'<div class="contact-card-next">{_esc(row.get("next_step", ""))}</div>'
+            f'</div>'
+            f'<details class="card-details">'
+            f'<summary>View details</summary>'
+            f'<div class="card-detail-row">'
+            f'<span class="card-detail-label">Email</span>'
+            f'<span class="card-detail-value">{_esc(row.get("counterparty_email", ""))}</span>'
+            f'</div>'
+            f'<div class="card-detail-row">'
+            f'<span class="card-detail-label">Owner</span>'
+            f'<span class="card-detail-value">{_esc(row.get("owner", ""))}</span>'
+            f'</div>'
+            f'<div class="card-detail-row">'
+            f'<span class="card-detail-label">Last touch</span>'
+            f'<span class="card-detail-value">{date_str}</span>'
+            f'</div>'
+            f'<div class="card-detail-notes">{_esc(notes_text)}</div>'
+            f'{ai_section}'
+            f'</details>'
+            f'</div>'
+        )
         st.markdown(card_html, unsafe_allow_html=True)
 
 
