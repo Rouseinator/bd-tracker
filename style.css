@@ -363,7 +363,7 @@ div[data-baseweb="popover"] li:hover {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
     gap: 12px;
 }
 .contact-card-left {
@@ -392,7 +392,7 @@ div[data-baseweb="popover"] li:hover {
     font-size: 0.72rem;
     color: #6b7a8d;
     text-align: right;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 .contact-card-subject {
     font-size: 0.86rem;
