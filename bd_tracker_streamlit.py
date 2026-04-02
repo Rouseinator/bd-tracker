@@ -1198,8 +1198,6 @@ def render_auth_screen():
 
 
 def render_top_nav():
-    account_name = st.session_state.account_label.split(" (")[0] if st.session_state.account_label else ""
-
     left, right = st.columns([3, 4])
 
     with left:
@@ -1283,22 +1281,17 @@ def render_top_nav():
 
 def render_pipeline_bar(df):
     st.markdown(
-        '<div class="section-header">Pipeline '
-        '<span class="section-header-hint">Hover over a stage for its definition</span>'
-        '</div>',
-        unsafe_allow_html=True,
+        '<div class="section-header">Pipeline</div>', unsafe_allow_html=True,
     )
 
     blocks = []
     for stage in STAGE_ORDER:
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
-        definition = _esc(STAGE_DEFINITIONS.get(stage, ""))
         zero_class = " zero" if count == 0 else ""
         blocks.append(
             f'<div class="pipeline-stage{zero_class}" '
             f'style="border-color:{border};background:{bg};">'
-            f'<div class="pipeline-tooltip">{definition}</div>'
             f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
             f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
             f'</div>'
@@ -1306,6 +1299,25 @@ def render_pipeline_bar(df):
 
     st.markdown(
         f'<div class="pipeline-bar">{"".join(blocks)}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Clickable stage definitions legend
+    legend_items = ""
+    for stage in STAGE_ORDER:
+        fg = STAGE_STYLES[stage][0]
+        defn = _esc(STAGE_DEFINITIONS.get(stage, ""))
+        legend_items += (
+            f'<div class="stage-legend-item">'
+            f'<span class="stage-legend-name" style="color:{fg};">{_esc(stage)}</span>'
+            f'<span class="stage-legend-desc">{defn}</span>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<details class="stage-legend">'
+        f'<summary>Stage definitions</summary>'
+        f'<div class="stage-legend-grid">{legend_items}</div>'
+        f'</details>',
         unsafe_allow_html=True,
     )
 
