@@ -1188,36 +1188,30 @@ def render_auth_screen():
 
 
 def render_top_nav():
+    account_name = st.session_state.account_label.split(" (")[0] if st.session_state.account_label else ""
+
     left, right = st.columns([3, 4])
 
     with left:
+        signed_in = f'<div class="nav-signed-in">Signed in as {_esc(account_name)}</div>' if account_name else ""
         st.markdown(
-            f'<div class="nav-brand">{_logo_img("26px")}</div>',
+            f'<div class="nav-brand-group">'
+            f'<div class="nav-brand">{_logo_img("26px")}</div>'
+            f'{signed_in}'
+            f'</div>',
             unsafe_allow_html=True,
         )
 
     with right:
-        # Extract just the display name (no email)
-        account_name = st.session_state.account_label.split(" (")[0] if st.session_state.account_label else ""
-        c1, c2, c3, c4 = st.columns([1.5, 2.5, 2.5, 1.5])
+        c1, c2, c3 = st.columns([3, 3, 2])
         with c1:
-            if account_name:
-                initials = "".join(w[0].upper() for w in account_name.split() if w)[:2]
-                st.markdown(
-                    f'<div class="nav-user">'
-                    f'<div class="nav-user-avatar">{initials}</div>'
-                    f'<span class="nav-user-name">{_esc(account_name)}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-        with c2:
             if st.button("Sync Outlook", type="primary", use_container_width=True):
                 with st.spinner("Syncing\u2026"):
                     try:
                         sync_outlook()
                     except Exception as exc:
                         st.error(str(exc))
-        with c3:
+        with c2:
             has_data = not st.session_state.tracker_df.empty
             ai_ready = bool(ANTHROPIC_API_KEY) and has_data
             if st.button(
@@ -1245,7 +1239,7 @@ def render_top_nav():
                 except Exception as exc:
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
-        with c4:
+        with c3:
             if st.button("Sign out", use_container_width=True):
                 sign_out()
 
