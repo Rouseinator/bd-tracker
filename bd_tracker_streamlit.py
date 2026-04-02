@@ -386,6 +386,88 @@ def _derive_days(date_str):
     return max(0, (datetime.now(timezone.utc) - dt.to_pydatetime()).days)
 
 
+# Prefixes in the local part of the email address that indicate automated senders
+_NOREPLY_PREFIXES = [
+    "no-reply", "noreply", "do-not-reply", "donotreply",
+    "no_reply", "notifications", "notification", "alert",
+    "alerts", "mailer-daemon", "postmaster", "bounce",
+    "auto-confirm", "info@", "news@", "updates@",
+    "support@", "billing@", "invoice@", "receipt@",
+    "payroll_manager", "security@", "admin@",
+]
+
+# Domains that are NEVER BD clients — automated systems, SaaS, vendors, fieldwork
+_EXCLUDED_DOMAINS = [
+    # Payroll / HR / finance systems
+    "employmenthero.com", "liquidhrpayroll.com.au", "xero.com",
+    "myob.com", "deputy.com", "keypay.com.au",
+    # Software / SaaS platforms
+    "netlify.com", "netlify.app", "github.com", "anthropic.com",
+    "microsoft.com", "google.com", "apple.com", "amazon.com",
+    "zoom.us", "slack.com", "canva.com", "adobe.com", "dropbox.com",
+    "atlassian.com", "notion.so", "figma.com", "zapier.com",
+    "mailchimp.com", "hubspot.com", "salesforce.com",
+    "netsuite.com", "oracle.com", "sap.com",
+    # Fieldwork / panel / research suppliers (provide services TO Forethought)
+    "dynata.com", "lightspeedresearch.com", "pureprofile.com",
+    "toluna.com", "theresearchshop.com.au", "qualtricsxm.com",
+    "qualtrics.com", "cint.com", "lucidholdings.com",
+    "prodege.com", "borderlesspanel.com",
+    # Research industry — newsletters/promotions (not commissioning clients)
+    "ipsos.com", "kantar.com", "nielsen.com", "gfk.com",
+    "roymorgan.com.au",
+    # Security / notifications / Microsoft
+    "microsoftonline.com", "protection.outlook.com",
+    "sharepointonline.com", "office365.com", "office.com",
+    # Newsletters / digests
+    "substack.com", "medium.com", "linkedin.com",
+    "eventbrite.com", "meetup.com",
+]
+
+# Subject-line patterns that indicate automated / non-BD messages
+_JUNK_SUBJECT_PATTERNS = [
+    "pay slip", "payslip", "pay period", "payroll",
+    "password reset", "security alert", "sign-in activity",
+    "unusual sign-in", "suspicious activity",
+    "verify your", "confirm your email", "secure link to log in",
+    "daily digest", "weekly digest", "reaction daily",
+    "your invoice", "your receipt", "your subscription",
+    "out of office", "automatic reply", "auto-reply",
+    "undeliverable", "delivery failure", "delivery status",
+    "phd update", "thesis update", "thesis chapter",
+    "sunday phd", "monday phd", "weekly phd",
+    "new pay slip", "your payslip",
+    "reaction daily digest", "reaction weekly",
+]
+
+
+def _is_auto_excluded(email, latest_subject=""):
+    """Return True if this contact should be auto-excluded as obviously not BD."""
+    if not email:
+        return True
+
+    local_part = email.split("@", 1)[0].lower()
+    domain = email.split("@", 1)[1].lower() if "@" in email else ""
+
+    # Check no-reply style addresses
+    for prefix in _NOREPLY_PREFIXES:
+        if local_part.startswith(prefix.rstrip("@")):
+            return True
+
+    # Check excluded domains
+    for excluded in _EXCLUDED_DOMAINS:
+        if domain == excluded or domain.endswith("." + excluded):
+            return True
+
+    # Check subject patterns for automated messages
+    subj_lower = (latest_subject or "").lower()
+    for pattern in _JUNK_SUBJECT_PATTERNS:
+        if pattern in subj_lower:
+            return True
+
+    return False
+
+
 # ─── Tracker builder ─────────────────────────────────────────────────────────
 
 def build_tracker(messages, owner):
@@ -401,7 +483,9 @@ def build_tracker(messages, owner):
 
     grouped = {}
     for msg in messages:
-        grouped.setdefault(msg["counterparty_email"], []).append(msg)
+        cp = msg.get("counterparty_email")
+        if cp:
+            grouped.setdefault(cp, []).append(msg)
 
     rows = []
     for email, group in grouped.items():
@@ -409,6 +493,11 @@ def build_tracker(messages, owner):
             key=lambda x: pd.to_datetime(x["datetime"], utc=True, errors="coerce"),
         )
         latest = group[-1]
+        latest_subject = latest.get("subject", "")
+
+        # Pre-filter: skip obviously non-BD contacts at sync time
+        if _is_auto_excluded(email, latest_subject):
+            continue
 
         # Build thread summary for AI classification
         thread_data = []
@@ -428,7 +517,7 @@ def build_tracker(messages, owner):
             "stage": "Pending",
             "last_touch": latest.get("datetime"),
             "days_since_touch": _derive_days(latest.get("datetime")),
-            "latest_subject": latest.get("subject", ""),
+            "latest_subject": latest_subject,
             "next_step": "Run AI classification to determine stage.",
             "notes": latest.get("preview", ""),
             "thread_data": json.dumps(thread_data),
@@ -516,7 +605,7 @@ def _call_claude(system_prompt, user_prompt):
             "system": system_prompt,
             "messages": [{"role": "user", "content": user_prompt}],
         },
-        timeout=30,
+        timeout=60,
     )
     if resp.status_code != 200:
         log.warning("Claude API error %s: %s", resp.status_code, resp.text[:200])
@@ -675,9 +764,11 @@ def run_ai_classification(df, progress_callback=None):
                 df.at[idx, "stage"] = "Not BD"
                 df.at[idx, "next_step"] = ""
         else:
-            # API failed for this contact — leave as unclassified
-            df.at[idx, "bd_relevant"] = None
-            df.at[idx, "contact_type"] = ""
+            # API failed for this contact — default to not relevant
+            df.at[idx, "bd_relevant"] = False
+            df.at[idx, "contact_type"] = "not_relevant"
+            df.at[idx, "stage"] = "Not BD"
+            df.at[idx, "ai_reasoning"] = "Classification failed — excluded by default."
 
     return df
 
@@ -816,14 +907,16 @@ def apply_filters(df, search, stage, sort, show_excluded):
 
     filtered = df.copy()
 
-    # After AI classification, hide non-BD contacts unless toggled on
+    # After AI classification has been run, only show BD-relevant contacts
+    # (hide both non-relevant AND any that failed to classify)
+    classification_ran = st.session_state.get("last_classify") is not None
     if not show_excluded and "bd_relevant" in filtered.columns:
-        # Keep: unclassified (None/NaN) OR bd_relevant == True
-        classified_mask = filtered["bd_relevant"].notna()
-        if classified_mask.any():
-            relevant_mask = filtered["bd_relevant"].fillna(False).astype(bool)
-            unclassified_mask = ~classified_mask
-            filtered = filtered[relevant_mask | unclassified_mask]
+        if classification_ran:
+            # Strict mode: only show contacts confirmed as BD-relevant
+            filtered = filtered[filtered["bd_relevant"].fillna(False).astype(bool)]
+        else:
+            # Before classification: show everything (all are Pending)
+            pass
 
     if search:
         mask = filtered.astype(str).apply(
