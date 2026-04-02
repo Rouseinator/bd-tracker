@@ -1382,25 +1382,35 @@ def render_pipeline_bar(df):
         unsafe_allow_html=True,
     )
 
-    # Clickable pipeline stage buttons
-    cols = st.columns(len(STAGE_ORDER))
-    for i, stage in enumerate(STAGE_ORDER):
+    # Pipeline stage cards — render HTML bar + hidden buttons for click handling
+    blocks = []
+    for stage in STAGE_ORDER:
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
         active = st.session_state.get("pipeline_stage_filter") == stage
         active_class = " pipeline-stage-active" if active else ""
         zero_class = " zero" if count == 0 and not active else ""
-        with cols[i]:
-            st.markdown(
-                f'<div class="pipeline-stage{zero_class}{active_class}" '
-                f'style="border-color:{border};background:{bg};">'
-                f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
-                f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-            if st.button(stage, key=f"pipe_{stage}", use_container_width=True):
-                if st.session_state.get("pipeline_stage_filter") == stage:
+        blocks.append(
+            f'<div class="pipeline-stage{zero_class}{active_class}" '
+            f'style="border-color:{border};background:{bg};">'
+            f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
+            f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
+            f'</div>'
+        )
+
+    st.markdown(
+        f'<div class="pipeline-bar">{"".join(blocks)}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Filter buttons aligned under each stage
+    pipe_cols = st.columns(len(STAGE_ORDER))
+    for i, stage in enumerate(STAGE_ORDER):
+        with pipe_cols[i]:
+            active = st.session_state.get("pipeline_stage_filter") == stage
+            label = f"✕ {stage}" if active else stage
+            if st.button(label, key=f"pipe_{stage}", use_container_width=True):
+                if active:
                     st.session_state.pipeline_stage_filter = None
                 else:
                     st.session_state.pipeline_stage_filter = stage
@@ -1647,21 +1657,6 @@ def main():
     if pipe_filter:
         stage = pipe_filter
     filtered = apply_filters(df, search, stage, sort, show_excluded)
-
-    # Show active pipeline filter with clear button
-    if pipe_filter:
-        fc1, fc2 = st.columns([6, 1])
-        with fc1:
-            fg = STAGE_STYLES.get(pipe_filter, ("#edf0f7",))[0]
-            st.markdown(
-                f'<div style="font-size:0.8rem;color:{fg};padding:4px 0;">'
-                f'Filtering: <strong>{_esc(pipe_filter)}</strong></div>',
-                unsafe_allow_html=True,
-            )
-        with fc2:
-            if st.button("✕ Clear filter", key="clear_pipe_filter", use_container_width=True):
-                st.session_state.pipeline_stage_filter = None
-                st.rerun()
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 

@@ -123,7 +123,7 @@ div[data-testid="stSidebar"] { display: none !important; }
 .pipeline-bar {
     display: flex;
     gap: 5px;
-    margin-bottom: 20px;
+    margin-bottom: 2px;
     overflow-x: auto;
 }
 .pipeline-stage {
@@ -145,6 +145,8 @@ div[data-testid="stSidebar"] { display: none !important; }
     outline-offset: 2px;
     opacity: 1 !important;
 }
+
+
 
 
 
