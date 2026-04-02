@@ -721,12 +721,12 @@ def run_ai_classification(df, progress_callback=None):
         return df
 
     total = len(df)
-    results = []
+    completed = 0
 
     for idx, row in df.iterrows():
-        i = len(results) + 1
+        completed += 1
         if progress_callback:
-            progress_callback(i / total, f"Classifying {row['contact_name'] or row['counterparty_email']} ({i}/{total})")
+            progress_callback(completed / total, f"Classifying {row['contact_name'] or row['counterparty_email']} ({completed}/{total})")
 
         domain = row["counterparty_email"].split("@", 1)[1] if "@" in str(row.get("counterparty_email", "")) else ""
 
@@ -809,15 +809,17 @@ def generate_pipeline_summary(df):
                 snapshot += f"  - {name}\n"
             snapshot += "\n"
 
-    system_prompt = """You are a senior BD advisor for Forethought Outcomes, a market research and strategy consultancy.
+    system_prompt = """You are a reporting assistant for Forethought Outcomes, a market research and strategy consultancy.
 
-Write a brief, sharp pipeline summary (3-5 sentences) for the BD team. Be specific — mention actual client names and stages where relevant. Focus on:
-- Overall pipeline health and momentum
-- Key opportunities that need attention (proposals pending, follow-ups overdue)
-- Any risks (dormant threads, stalled conversations)
-- One clear priority action
+Write a brief, factual pipeline summary (3-5 sentences) based purely on the data provided. Be specific — mention actual client names and their current stages. Report only what the data shows:
+- How many BD-relevant contacts there are and how they are distributed across stages
+- Which contacts have the longest time since last touch
+- Which contacts are at the proposal or commissioned stage
+- Any contacts where there has been no activity for an extended period
 
-Write in a direct, professional tone. No bullet points — flowing prose only. Do not use any markdown formatting."""
+IMPORTANT: Be strictly factual. Do NOT make judgments, opinions, or assessments like "concerning", "lacks depth", "impressive", "needs improvement", "healthy", or "at risk". Simply report the facts and let the reader draw their own conclusions.
+
+Write in a neutral, professional tone. No bullet points — flowing prose only. Do not use any markdown formatting."""
 
     user_prompt = f"""Here is the current BD pipeline snapshot after AI classification:\n\n{snapshot}\n\nWrite a concise pipeline summary."""
 
