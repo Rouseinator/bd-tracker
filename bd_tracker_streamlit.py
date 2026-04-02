@@ -1236,11 +1236,6 @@ def render_top_nav():
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
         with c3:
-            if account_name:
-                st.markdown(
-                    f'<div class="nav-signed-in">{_esc(account_name)}</div>',
-                    unsafe_allow_html=True,
-                )
             if st.button("Sign out", use_container_width=True):
                 sign_out()
 

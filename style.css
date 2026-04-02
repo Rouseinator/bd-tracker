@@ -36,12 +36,6 @@ div[data-testid="stSidebar"] { display: none !important; }
 .nav-brand img {
     display: block;
 }
-.nav-signed-in {
-    font-size: 0.68rem;
-    color: #6b7a8d;
-    text-align: center;
-    padding-bottom: 2px;
-}
 
 /* --- 4. Auth Screen --- */
 .auth-outer {
