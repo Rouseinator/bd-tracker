@@ -136,9 +136,17 @@ div[data-testid="stSidebar"] { display: none !important; }
     transition: opacity 0.2s;
 }
 
+/* Pipeline header row */
+.pipeline-header-row {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 10px;
+}
+
 /* Stage definitions legend */
 .stage-legend {
-    margin: 6px 0 14px;
+    margin: 0;
 }
 .stage-legend summary {
     font-size: 0.76rem;
