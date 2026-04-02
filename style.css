@@ -386,7 +386,7 @@ div[data-baseweb="popover"] li:hover {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 2px;
+    gap: 6px;
     flex-shrink: 0;
 }
 .contact-card-pills {
