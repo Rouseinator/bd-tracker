@@ -16,14 +16,15 @@
 
 /* --- 2. Layout --- */
 .block-container {
-    padding-top: 1.25rem !important;
+    padding-top: 0.5rem !important;
     padding-bottom: 2rem;
     max-width: 1280px;
 }
 
 /* Hide Streamlit chrome */
 #MainMenu { visibility: hidden; }
-header[data-testid="stHeader"] { background: transparent !important; pointer-events: none; height: 0 !important; }
+header[data-testid="stHeader"] { background: transparent !important; pointer-events: none; height: 0 !important; min-height: 0 !important; overflow: hidden !important; z-index: -1 !important; }
+header[data-testid="stHeader"] * { pointer-events: none !important; }
 footer { visibility: hidden; }
 div[data-testid="stSidebar"] { display: none !important; }
 
