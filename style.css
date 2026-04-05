@@ -135,8 +135,11 @@ div[data-testid="stSidebar"] { display: none !important; }
     padding: 12px 4px 10px;
     border: 1px solid transparent;
     transition: opacity 0.2s, transform 0.15s;
-    border: none !important;
 }
+
+/* Pipeline button wrappers — prevent margin/padding from Streamlit */
+.pipe-btn { margin: 0; padding: 0; }
+.pipe-btn .stButton { margin: 0; }
 
 
 
