@@ -1364,43 +1364,58 @@ def render_pipeline_bar(df):
     )
 
     # Clickable pipeline stage buttons (styled as cards via CSS)
-    pipe_cols = st.columns(len(STAGE_ORDER))
-    pipe_css = ""
+    # Wrap in a container so we get a stVerticalBlockBorderWrapper in the DOM,
+    # then inject a hidden marker div so CSS :has() can scope styles to this section only
+    pipe_container = st.container()
+    with pipe_container:
+        # Hidden marker — used by CSS :has(.pipe-marker) to scope styles
+        st.markdown('<div class="pipe-marker"></div>', unsafe_allow_html=True)
+        pipe_cols = st.columns(len(STAGE_ORDER))
+        for i, stage in enumerate(STAGE_ORDER):
+            count = int((df["stage"] == stage).sum()) if not df.empty else 0
+            active = st.session_state.get("pipeline_stage_filter") == stage
+            label = f"{count}\n{stage.upper()}"
+            with pipe_cols[i]:
+                if st.button(label, key=f"pipe_{stage}", use_container_width=True):
+                    if active:
+                        st.session_state.pipeline_stage_filter = None
+                    else:
+                        st.session_state.pipeline_stage_filter = stage
+                    st.rerun()
+
+    # Scoped CSS — targets only buttons inside the wrapper that contains .pipe-marker
+    scope = '[data-testid="stVerticalBlockBorderWrapper"]:has(.pipe-marker)'
+    pipe_css = f'{scope} .pipe-marker {{ display:none !important; }}'  # hide marker
+    pipe_css += f'{scope} button {{'
+    pipe_css += '  white-space:pre-line !important;'
+    pipe_css += '  text-align:center !important;'
+    pipe_css += '  font-size:0.58rem !important;'
+    pipe_css += '  font-weight:600 !important;'
+    pipe_css += '  text-transform:uppercase !important;'
+    pipe_css += '  letter-spacing:0.03em !important;'
+    pipe_css += '  line-height:1.8 !important;'
+    pipe_css += '  min-height:60px !important;'
+    pipe_css += '  padding:12px 4px 10px !important;'
+    pipe_css += '  border-radius:10px !important;'
+    pipe_css += '  transition:opacity 0.2s, transform 0.15s !important;'
+    pipe_css += '}'
+    pipe_css += f'{scope} button:hover {{'
+    pipe_css += '  transform:translateY(-2px); opacity:1 !important;'
+    pipe_css += '}'
+
+    # Per-stage colours (scoped via nth-child INSIDE the marked container only)
     for i, stage in enumerate(STAGE_ORDER):
         count = int((df["stage"] == stage).sum()) if not df.empty else 0
         fg, bg, border = STAGE_STYLES[stage]
         active = st.session_state.get("pipeline_stage_filter") == stage
         active_css = "outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
         opacity_css = "opacity:0.3;" if count == 0 and not active else ""
-        slug = stage.lower().replace(" ", "-")
-        label = f"{count}\n{stage.upper()}"
-        with pipe_cols[i]:
-            st.markdown(f'<div class="pipe-btn pipe-btn-{slug}">', unsafe_allow_html=True)
-            if st.button(label, key=f"pipe_{stage}", use_container_width=True):
-                if active:
-                    st.session_state.pipeline_stage_filter = None
-                else:
-                    st.session_state.pipeline_stage_filter = stage
-                st.rerun()
-            st.markdown('</div>', unsafe_allow_html=True)
         pipe_css += (
-            f'.pipe-btn-{slug} button {{'
+            f'{scope} [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child({i+1}) button {{'
             f'  background:{bg} !important;'
             f'  border:1px solid {border} !important;'
-            f'  border-radius:10px !important;'
             f'  color:{fg} !important;'
-            f'  padding:12px 4px 10px !important;'
-            f'  min-height:60px !important;'
-            f'  white-space:pre-line !important;'
-            f'  font-size:0.58rem !important;'
-            f'  font-weight:600 !important;'
-            f'  text-transform:uppercase !important;'
-            f'  letter-spacing:0.03em !important;'
-            f'  line-height:1.8 !important;'
             f'  {active_css}{opacity_css}'
-            f'}}'
-            f'.pipe-btn-{slug} button:hover {{'
-            f'  transform:translateY(-2px);opacity:1 !important;'
             f'}}'
         )
     st.markdown(f'<style>{pipe_css}</style>', unsafe_allow_html=True)
