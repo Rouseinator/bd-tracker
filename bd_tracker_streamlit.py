@@ -1272,7 +1272,7 @@ def render_top_nav():
             ai_ready = bool(ANTHROPIC_API_KEY) and has_data
             if st.button(
                 "Classify AI",
-                type="primary" if ai_ready else "secondary",
+                type="primary",
                 use_container_width=True,
                 disabled=not ai_ready,
             ):
@@ -1296,7 +1296,7 @@ def render_top_nav():
                     progress.empty()
                     st.error(f"AI classification error: {exc}")
         with c3:
-            if st.button("Sign out", use_container_width=True):
+            if st.button("Sign out", type="primary", use_container_width=True):
                 sign_out()
 
     st.markdown('<hr class="subtle-divider">', unsafe_allow_html=True)
