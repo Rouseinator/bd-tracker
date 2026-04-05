@@ -240,7 +240,7 @@ def _apply_memory(df) -> pd.DataFrame:
         return df
     for idx, row in df.iterrows():
         # Never override auto-excluded contacts with memory — auto-exclude takes priority
-        if row.get("bd_relevant") is False and str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+        if str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
             continue
         email = row.get("counterparty_email", "")
         if email in memory:
@@ -940,7 +940,7 @@ def run_ai_classification(df, progress_callback=None):
     to_classify = []
     for idx, row in df.iterrows():
         # Skip auto-excluded
-        if row.get("bd_relevant") is False and str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+        if str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
             continue
         # Already classified — but re-classify if client name looks bad
         if row.get("bd_relevant") is not None:
