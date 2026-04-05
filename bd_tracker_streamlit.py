@@ -1363,61 +1363,49 @@ def render_pipeline_bar(df):
         unsafe_allow_html=True,
     )
 
-    # Clickable pipeline stage buttons (styled as cards via CSS)
-    # Wrap in a container so we get a stVerticalBlockBorderWrapper in the DOM,
-    # then inject a hidden marker div so CSS :has() can scope styles to this section only
+    # Clickable pipeline stage cards
+    # HTML cards for visual design + hidden st.button overlay for click handling
+    # Wrapped in st.container() so we get a stVerticalBlockBorderWrapper in the DOM
+    # with a .pipe-marker class for CSS scoping (prevents bleed into nav buttons)
     pipe_container = st.container()
     with pipe_container:
-        # Hidden marker — used by CSS :has(.pipe-marker) to scope styles
         st.markdown('<div class="pipe-marker"></div>', unsafe_allow_html=True)
         pipe_cols = st.columns(len(STAGE_ORDER))
         for i, stage in enumerate(STAGE_ORDER):
             count = int((df["stage"] == stage).sum()) if not df.empty else 0
+            fg, bg, border = STAGE_STYLES[stage]
             active = st.session_state.get("pipeline_stage_filter") == stage
-            label = f"{count}\n{stage.upper()}"
+            active_class = " pipeline-stage-active" if active else ""
+            zero_class = " zero" if count == 0 and not active else ""
             with pipe_cols[i]:
-                if st.button(label, key=f"pipe_{stage}", use_container_width=True):
+                st.markdown(
+                    f'<div class="pipeline-stage{zero_class}{active_class}" '
+                    f'style="border-color:{border};background:{bg};">'
+                    f'<div class="pipeline-count" style="color:{fg};">{count}</div>'
+                    f'<div class="pipeline-label" style="color:{fg};">{_esc(stage)}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                if st.button("\u3164", key=f"pipe_{stage}", use_container_width=True):
                     if active:
                         st.session_state.pipeline_stage_filter = None
                     else:
                         st.session_state.pipeline_stage_filter = stage
                     st.rerun()
 
-    # Scoped CSS — targets only buttons inside the wrapper that contains .pipe-marker
+    # Scoped CSS for the invisible click overlay — only inside the pipe-marker container
     scope = '[data-testid="stVerticalBlockBorderWrapper"]:has(.pipe-marker)'
-    pipe_css = f'{scope} .pipe-marker {{ display:none !important; }}'  # hide marker
-    pipe_css += f'{scope} button {{'
-    pipe_css += '  white-space:pre-line !important;'
-    pipe_css += '  text-align:center !important;'
-    pipe_css += '  font-size:0.58rem !important;'
-    pipe_css += '  font-weight:600 !important;'
-    pipe_css += '  text-transform:uppercase !important;'
-    pipe_css += '  letter-spacing:0.03em !important;'
-    pipe_css += '  line-height:1.8 !important;'
-    pipe_css += '  min-height:60px !important;'
-    pipe_css += '  padding:12px 4px 10px !important;'
-    pipe_css += '  border-radius:10px !important;'
-    pipe_css += '  transition:opacity 0.2s, transform 0.15s !important;'
+    pipe_css = f'{scope} .pipe-marker {{ display:none !important; }}'
+    pipe_css += f'{scope} .pipeline-stage {{ pointer-events:none; cursor:pointer; }}'
+    pipe_css += f'{scope} [data-testid="stColumn"] {{ cursor:pointer; }}'
+    pipe_css += f'{scope} [data-testid="stColumn"] .stButton {{ margin-top:-70px; position:relative; z-index:5; }}'
+    pipe_css += f'{scope} [data-testid="stColumn"] button {{'
+    pipe_css += '  opacity:0 !important; height:70px !important; min-height:0 !important;'
+    pipe_css += '  cursor:pointer !important; padding:0 !important; margin:0 !important; border:none !important;'
     pipe_css += '}'
-    pipe_css += f'{scope} button:hover {{'
+    pipe_css += f'{scope} [data-testid="stColumn"]:hover .pipeline-stage {{'
     pipe_css += '  transform:translateY(-2px); opacity:1 !important;'
     pipe_css += '}'
-
-    # Per-stage colours (scoped via nth-child INSIDE the marked container only)
-    for i, stage in enumerate(STAGE_ORDER):
-        count = int((df["stage"] == stage).sum()) if not df.empty else 0
-        fg, bg, border = STAGE_STYLES[stage]
-        active = st.session_state.get("pipeline_stage_filter") == stage
-        active_css = "outline:2px solid #5ec6c1;outline-offset:2px;" if active else ""
-        opacity_css = "opacity:0.3;" if count == 0 and not active else ""
-        pipe_css += (
-            f'{scope} [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:nth-child({i+1}) button {{'
-            f'  background:{bg} !important;'
-            f'  border:1px solid {border} !important;'
-            f'  color:{fg} !important;'
-            f'  {active_css}{opacity_css}'
-            f'}}'
-        )
     st.markdown(f'<style>{pipe_css}</style>', unsafe_allow_html=True)
 
 
