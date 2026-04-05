@@ -394,14 +394,15 @@ def _is_proper_name(name: str) -> bool:
     (as opposed to a raw domain-derived string like 'Junioradventuresgroup')."""
     if not name or name == "Unknown":
         return False
-    # Has a space → likely proper (e.g. "CPA Australia")
+    # Has a space → likely proper (e.g. "CPA Australia", "Junior Adventures Group")
     if " " in name:
         return True
     # All uppercase and short → likely an acronym (e.g. "ANZSOG", "IBM")
     if name.isupper() and len(name) <= 6:
         return True
-    # Single capitalised word that's short → likely fine (e.g. "Telstra", "Google")
-    if len(name) <= 12 and name[0].isupper():
+    # Single word — only proper if it's a short, recognisable name (≤8 chars)
+    # Longer single words are almost always concatenated domain names
+    if len(name) <= 8 and name[0].isupper():
         return True
     return False
 
@@ -1008,22 +1009,18 @@ def generate_pipeline_summary(df):
 
     system_prompt = """You are a reporting assistant for Forethought Outcomes, a market research and strategy consultancy.
 
-Write a brief, factual pipeline summary (3-5 sentences) based purely on the data provided. Be specific — mention actual client names and their current stages. Report only what the data shows:
-- How many BD-relevant contacts there are and how they are distributed across stages
-- Which contacts have the longest time since last touch
-- Which contacts are at the proposal or commissioned stage
-- Any contacts where there has been no activity for an extended period
+Write a factual pipeline summary based purely on the data provided. Structure it as follows:
+
+1. Start with a one-sentence overview of the total number of BD-relevant contacts and their distribution across stages.
+2. Then summarise each active stage, naming every client in that stage. For example: "In Conversation (5): CPA Australia, University of Melbourne, ANZSOG, Swinburne University of Technology, and La Vida Homes."
+3. Call out any contacts with extended periods of inactivity (14+ days since last touch).
+4. Highlight any contacts at Proposal or Commissioned stage.
 
 IMPORTANT: Be strictly factual. Do NOT make judgments, opinions, or assessments like "concerning", "lacks depth", "impressive", "needs improvement", "healthy", or "at risk". Simply report the facts and let the reader draw their own conclusions.
 
-IMPORTANT: Always use proper, correctly formatted business names. For example:
-- "Swin" or "Swinburne" should be "Swinburne University of Technology"
-- "Cpaaustralia" should be "CPA Australia"
-- "Unimelb" should be "University of Melbourne"
-- "Anzsog" should be "ANZSOG"
-- Domain-derived abbreviations should be expanded to the full, properly capitalised organisation name.
+IMPORTANT: Always use proper, correctly formatted business names. The data may contain raw domain-derived names like "Cpaaustralia", "Swin", "Unimelb", "Lavidahomes", or "Junioradventuresgroup". You MUST expand and correct these to their proper names (e.g. "CPA Australia", "Swinburne University of Technology", "University of Melbourne", "La Vida Homes", "Junior Adventures Group"). Use your knowledge to identify the correct organisation name from the domain.
 
-Write in a neutral, professional tone. No bullet points — flowing prose only. Do not use any markdown formatting."""
+Write in a neutral, professional tone. Flowing prose only — no bullet points or markdown formatting."""
 
     user_prompt = f"""Here is the current BD pipeline snapshot after AI classification:\n\n{snapshot}\n\nWrite a concise pipeline summary."""
 
