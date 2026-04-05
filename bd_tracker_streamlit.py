@@ -239,6 +239,9 @@ def _apply_memory(df) -> pd.DataFrame:
     if not memory:
         return df
     for idx, row in df.iterrows():
+        # Never override auto-excluded contacts with memory — auto-exclude takes priority
+        if row.get("bd_relevant") is False and str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+            continue
         email = row.get("counterparty_email", "")
         if email in memory:
             saved = memory[email]
@@ -505,6 +508,9 @@ _NOREPLY_PREFIXES = [
     "auto-confirm", "info@", "news@", "updates@",
     "support@", "billing@", "invoice@", "receipt@",
     "payroll_manager", "security@", "admin@",
+    "system@", "automated@", "marketing@", "promo@",
+    "promotions@", "digest@", "newsletter@",
+    "subscriptions@", "orders@", "accounts@",
 ]
 
 # Domains that are NEVER BD clients — automated systems, SaaS, vendors, fieldwork
@@ -519,6 +525,18 @@ _EXCLUDED_DOMAINS = [
     "atlassian.com", "notion.so", "figma.com", "zapier.com",
     "mailchimp.com", "hubspot.com", "salesforce.com",
     "netsuite.com", "oracle.com", "sap.com",
+    # Infrastructure / CDN / hosting / security
+    "cloudflare.com", "amazonaws.com", "digitalocean.com",
+    "godaddy.com", "namecheap.com", "squarespace.com",
+    "wix.com", "wordpress.com", "wpengine.com",
+    "sendgrid.net", "sendgrid.com", "mailgun.com",
+    "twilio.com", "intercom.io", "intercom.com",
+    "zendesk.com", "freshdesk.com", "stripe.com",
+    "paypal.com", "shopify.com",
+    # Additional HR / finance / insurance / banking
+    "seek.com.au", "indeed.com", "glassdoor.com",
+    "commbank.com.au", "westpac.com.au", "nab.com.au", "anz.com.au",
+    "amp.com.au", "qbe.com", "allianz.com.au",
     # Fieldwork / panel / research suppliers (provide services TO Forethought)
     "dynata.com", "lightspeedresearch.com", "pureprofile.com",
     "toluna.com", "theresearchshop.com.au", "qualtricsxm.com",
@@ -537,20 +555,40 @@ _EXCLUDED_DOMAINS = [
 
 # Subject-line patterns that indicate automated / non-BD messages
 _JUNK_SUBJECT_PATTERNS = [
+    # Payroll / HR
     "pay slip", "payslip", "pay period", "payroll",
+    "leave request", "leave approved", "leave balance",
+    "timesheet", "roster update", "shift update",
+    # Security / auth
     "password reset", "security alert", "sign-in activity",
     "unusual sign-in", "suspicious activity",
     "verify your", "confirm your email", "secure link to log in",
+    "two-factor", "2fa", "verification code", "one-time code",
+    # Digests / newsletters
     "daily digest", "weekly digest", "reaction daily",
+    "reaction daily digest", "reaction weekly",
+    "weekly roundup", "monthly roundup", "weekly update from",
+    "weekly newsletter", "monthly newsletter",
+    # Transactional
     "your invoice", "your receipt", "your subscription",
+    "payment received", "payment confirmation", "order confirmation",
+    "renewal notice", "subscription renewal",
+    # Auto-replies / bounces
     "out of office", "automatic reply", "auto-reply",
     "undeliverable", "delivery failure", "delivery status",
+    # Academic / personal
     "phd update", "thesis update", "thesis chapter",
     "sunday phd", "monday phd", "weekly phd",
-    "new pay slip", "your payslip",
-    "reaction daily digest", "reaction weekly",
+    # Building / facilities
+    "building update", "building notice", "building maintenance",
+    "strata notice", "body corporate", "fire drill", "fire test",
+    "lift maintenance", "car park", "carpark",
+    # Misc non-BD
     "what's on this month", "whats on this month",
-    "building update", "building notice",
+    "new pay slip", "your payslip",
+    "action required:", "reminder:", "expiring soon",
+    "account update", "terms of service", "privacy policy",
+    "we've updated", "we have updated",
 ]
 
 
@@ -662,18 +700,24 @@ INCLUDE (bd_relevant = true):
 - Former clients who previously commissioned work (mark as former_client)
 - Government agencies, universities, NFPs, corporates, or any other organisation that commissions (or could commission) research, insights, or consulting from Forethought
 - Anyone Forethought is building a relationship with for potential future work, even if the conversation is early or informal (e.g. catch-ups, coffees, intros)
-- When in doubt about whether a contact is a potential client, lean towards INCLUDING them — it is better to include a borderline contact than to miss a real one
+- When in doubt about whether a contact is a potential client, lean towards including them — BUT only if there is a genuine human conversation or relationship. Do NOT include automated, transactional, or system-generated emails just because you're unsure.
 
-EXCLUDE (bd_relevant = false) — these are NOT clients:
+EXCLUDE (bd_relevant = false) — these are NOT clients. Be aggressive about excluding these:
 - FIELDWORK HOUSES and research panel providers (e.g. PureProfile, Lightspeed, Dynata, Qualtrics panels, The Research Shop, fieldwork agencies, anyone providing data collection, sample, panel recruitment, or survey hosting services TO Forethought)
-- SOFTWARE and SAAS providers (e.g. Microsoft, NetSuite, Adobe, Canva, Zoom, Slack, any platform/tool Forethought uses)
-- IT support, security alerts, system notifications (e.g. Microsoft Security, password resets, account alerts)
+- SOFTWARE / SAAS / PLATFORM providers — ANY company that provides software, tools, platforms, cloud services, or digital infrastructure TO Forethought. This includes but is not limited to: HR/payroll platforms (Employment Hero, Deputy, KeyPay), accounting (Xero, MYOB), CDN/hosting/infrastructure (Cloudflare, AWS, Netlify, DigitalOcean), CRM/project management, design tools, communication platforms, developer tools, security services, domain/DNS providers, email marketing platforms, analytics tools
+- IT support, security alerts, system notifications, password resets, account alerts, MFA/2FA codes, login alerts
 - RECRUITMENT contacts, job applicants, staffing agencies
-- OTHER SUPPLIERS or vendors providing services TO Forethought (design agencies, printers, accountants, lawyers, office suppliers)
-- Promotional emails, newsletters, marketing where there is no personal relationship or BD conversation
-- Automated notifications from any system
+- OTHER SUPPLIERS or vendors providing services TO Forethought (design agencies, printers, accountants, lawyers, office suppliers, insurance, banking)
+- Promotional emails, newsletters, marketing communications, event invitations from organisations that are NOT discussing commissioning work from Forethought
+- Automated notifications, transactional emails, receipts, invoices, subscription confirmations from any system or platform
+- Building management, strata, office administration, facility notices
+- Personal subscriptions, non-work communications
 
-KEY TEST: Is this person/organisation someone who PAYS (or could pay) Forethought for research, insights, or consulting services? If they provide services TO Forethought, or are a platform/tool, they are NOT a client. But if they COULD be a buyer of Forethought's services (including government, universities, NFPs, corporates), include them.
+KEY TEST: Is this person/organisation someone who PAYS (or could pay) Forethought for research, insights, or consulting services? Apply this test strictly:
+- If the email is FROM a platform, tool, SaaS vendor, or service provider → EXCLUDE. These companies sell TO Forethought, not the other way around.
+- If the email is automated, transactional, or has no human relationship → EXCLUDE.
+- If the email is a newsletter or marketing blast with no personal BD conversation → EXCLUDE.
+- Only INCLUDE if there is evidence of a genuine human relationship where the organisation could commission research, insights, or consulting from Forethought.
 
 Respond with ONLY a JSON object, no other text."""
 
