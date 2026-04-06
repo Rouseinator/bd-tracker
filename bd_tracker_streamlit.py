@@ -1696,49 +1696,63 @@ def render_pipeline_summary():
     if bd_df.empty:
         return
 
-    # Group by client name — merge contacts from the same organisation
-    # Use the most advanced stage and most recent touch date
+    # Group by client + stage — so two separate engagements with the same
+    # client (e.g. one In Conversation, one Active Project) stay as separate rows,
+    # but two contacts discussing the same engagement merge into one row
     stage_rank = {s: i for i, s in enumerate(STAGE_ORDER)}
     bd_df["_stage_rank"] = bd_df["stage"].map(stage_rank).fillna(99)
 
-    grouped_clients = {}
+    grouped = {}
     for _, row in bd_df.iterrows():
         client = row.get("client_name", "Unknown")
-        if client not in grouped_clients:
-            grouped_clients[client] = {
+        stage = row.get("stage", "Pending")
+        key = (client, stage)
+        if key not in grouped:
+            grouped[key] = {
+                "client": client,
                 "contacts": [],
                 "emails": [],
-                "stage": row.get("stage", "Pending"),
-                "stage_rank": row.get("_stage_rank", 99),
+                "stage": stage,
+                "stage_rank": stage_rank.get(stage, 99),
                 "days": row.get("days_since_touch"),
                 "next_step": str(row.get("next_step", "")),
             }
-        entry = grouped_clients[client]
+        entry = grouped[key]
         contact_name = row.get("contact_name", "")
         if contact_name and contact_name not in entry["contacts"]:
             entry["contacts"].append(contact_name)
         entry["emails"].append(row.get("counterparty_email", ""))
-        # Use the most advanced (lowest rank) stage
-        row_rank = row.get("_stage_rank", 99)
-        if row_rank < entry["stage_rank"]:
-            entry["stage"] = row.get("stage", "Pending")
-            entry["stage_rank"] = row_rank
         # Use the most recent touch date
         row_days = row.get("days_since_touch")
         if row_days is not None and not pd.isna(row_days):
             if entry["days"] is None or pd.isna(entry["days"]) or row_days < entry["days"]:
                 entry["days"] = row_days
-        # Use the next_step from the most advanced stage contact
-        if row_rank <= entry["stage_rank"] and str(row.get("next_step", "")):
-            entry["next_step"] = str(row.get("next_step", ""))
+        # Use the longest next_step (most informative)
+        row_next = str(row.get("next_step", ""))
+        if len(row_next) > len(entry["next_step"]):
+            entry["next_step"] = row_next
 
-    # Sort by stage order, then days since touch
-    sorted_clients = sorted(
-        grouped_clients.items(),
-        key=lambda x: (x[1]["stage_rank"], -(x[1]["days"] if x[1]["days"] is not None and not pd.isna(x[1]["days"]) else 0)),
-    )
+    rows_list = list(grouped.values())
 
-    # Header
+    # Sort order — user can toggle by clicking column headers
+    sort_key = st.session_state.get("pipeline_sort", "stage")
+    sort_asc = st.session_state.get("pipeline_sort_asc", True)
+
+    def _sort_val(r, key):
+        if key == "client":
+            return r["client"].lower()
+        elif key == "stage":
+            return r["stage_rank"]
+        elif key == "touch":
+            d = r["days"]
+            return d if d is not None and not pd.isna(d) else 9999
+        elif key == "next":
+            return r["next_step"].lower()
+        return 0
+
+    rows_list.sort(key=lambda r: _sort_val(r, sort_key), reverse=not sort_asc)
+
+    # Header with title
     st.markdown(
         '<div class="pipeline-summary">'
         '<div class="pipeline-summary-header">'
@@ -1748,19 +1762,46 @@ def render_pipeline_summary():
         unsafe_allow_html=True,
     )
 
-    # Table header row
-    hdr_cols = st.columns([2.5, 2, 1.2, 1, 3, 0.5])
-    headers = ["Client", "Contact(s)", "Stage", "Last Touch", "Next Step", ""]
-    for i, h in enumerate(headers):
+    # Sortable column headers — clicking toggles sort
+    sort_columns = [
+        ("client", "Client", 2.5),
+        ("contact", "Contact(s)", 2),
+        ("stage", "Stage", 1.2),
+        ("touch", "Last Touch", 1),
+        ("next", "Next Step", 3),
+    ]
+    hdr_cols = st.columns([s[2] for s in sort_columns] + [0.5])
+    for i, (col_key, label, _) in enumerate(sort_columns):
         with hdr_cols[i]:
-            st.markdown(
-                f'<div style="font-size:0.68rem;font-weight:600;text-transform:uppercase;'
-                f'letter-spacing:0.06em;color:#6b7a8d;padding:0 2px;">{h}</div>',
-                unsafe_allow_html=True,
-            )
+            # Show sort arrow if this column is active
+            if sort_key == col_key:
+                arrow = " ▲" if sort_asc else " ▼"
+            else:
+                arrow = ""
+            if col_key != "contact":  # contact column not sortable
+                if st.button(
+                    f"{label}{arrow}",
+                    key=f"sort_{col_key}",
+                    use_container_width=True,
+                ):
+                    if sort_key == col_key:
+                        st.session_state.pipeline_sort_asc = not sort_asc
+                    else:
+                        st.session_state.pipeline_sort = col_key
+                        st.session_state.pipeline_sort_asc = True
+                    st.rerun()
+            else:
+                st.markdown(
+                    f'<div style="font-size:0.68rem;font-weight:600;text-transform:uppercase;'
+                    f'letter-spacing:0.06em;color:#6b7a8d;padding:6px 2px;">{label}</div>',
+                    unsafe_allow_html=True,
+                )
+    with hdr_cols[-1]:
+        st.markdown("", unsafe_allow_html=True)
 
-    # Table body — one Streamlit row per client
-    for client, data in sorted_clients:
+    # Table body — one Streamlit row per client+stage group
+    for data in rows_list:
+        client = data["client"]
         stage = data["stage"]
         fg, bg, border = STAGE_STYLES.get(stage, STAGE_STYLES["Pending"])
         days = data["days"]
