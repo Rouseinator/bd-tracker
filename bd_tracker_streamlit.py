@@ -259,6 +259,27 @@ def _apply_memory(df) -> pd.DataFrame:
     return df
 
 
+def _enforce_auto_exclude(df) -> pd.DataFrame:
+    """Re-apply auto-exclude rules to the entire DataFrame.
+
+    This catches any contacts that should be excluded but were restored
+    from classification memory (e.g. domain was added to excluded list
+    after the contact was previously classified).
+    """
+    for idx, row in df.iterrows():
+        email = row.get("counterparty_email", "")
+        subject = row.get("latest_subject", "")
+        if _is_auto_excluded(email, subject):
+            df.at[idx, "bd_relevant"] = False
+            df.at[idx, "stage"] = "Not BD"
+            df.at[idx, "contact_type"] = "not_relevant"
+            df.at[idx, "ai_confidence"] = 1.0
+            df.at[idx, "ai_reasoning"] = "Auto-excluded: automated sender, system notification, or known non-client domain."
+            df.at[idx, "ai_stage_reasoning"] = ""
+            df.at[idx, "next_step"] = ""
+    return df
+
+
 def _update_memory(df) -> None:
     """Save current classifications to memory file."""
     memory = _load_memory()
@@ -1102,6 +1123,8 @@ def sync_outlook():
     df = build_tracker(messages, owner)
     # Restore any previous classifications from memory
     df = _apply_memory(df)
+    # Re-enforce auto-exclude after memory restore (belt-and-suspenders)
+    df = _enforce_auto_exclude(df)
     st.session_state.tracker_df = df
     st.session_state.last_sync = datetime.now(timezone.utc)
     # If memory restored some classifications, keep last_classify set
