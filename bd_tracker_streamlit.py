@@ -287,6 +287,11 @@ def _update_memory(df) -> None:
         email = row.get("counterparty_email", "")
         if not email:
             continue
+        # Don't save auto-excluded contacts to memory — they should always
+        # be re-evaluated against the current exclusion rules on each sync
+        if str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+            memory.pop(email, None)  # Remove stale entry if present
+            continue
         bd_relevant = row.get("bd_relevant")
         # Only save contacts that have been classified (not None/Pending)
         if bd_relevant is not None:
@@ -401,7 +406,7 @@ def _graph_get(path: str, params: dict = None) -> dict:
 
 def _email_addr(obj) -> str:
     try:
-        return obj["emailAddress"]["address"].lower()
+        return obj["emailAddress"]["address"].strip().lower()
     except Exception:
         return None
 
@@ -473,9 +478,6 @@ def normalise_messages(messages, box, internal_domains):
         if box == "inbox":
             counterparty = _email_addr(m.get("from", {}))
             if _is_internal(counterparty, internal_domains):
-                continue
-            # Drop obviously non-BD emails at the earliest stage
-            if _is_auto_excluded(counterparty, m.get("subject", "")):
                 continue
             rows.append({
                 "message_id": m.get("id"),
@@ -621,8 +623,16 @@ def _is_auto_excluded(email, latest_subject=""):
     if not email:
         return True
 
-    local_part = email.split("@", 1)[0].lower()
-    domain = email.split("@", 1)[1].lower() if "@" in email else ""
+    # Clean the email — strip whitespace, angle brackets, display name
+    clean = str(email).strip().lower()
+    if "<" in clean and ">" in clean:
+        clean = clean.split("<")[1].split(">")[0].strip()
+
+    if "@" not in clean:
+        return True
+
+    local_part = clean.split("@", 1)[0]
+    domain = clean.split("@", 1)[1]
 
     # Check no-reply style addresses
     for prefix in _NOREPLY_PREFIXES:
