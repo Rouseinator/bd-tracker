@@ -348,6 +348,22 @@ div[data-testid="stSidebar"] { display: none !important; }
     color: #5ec6c1 !important;
 }
 
+/* Contact card exclude button — small, subtle ✕ */
+.contact-card-exclude-btn button[kind="secondary"] {
+    font-size: 0.7rem !important;
+    padding: 2px 6px !important;
+    min-height: 0 !important;
+    height: 24px !important;
+    opacity: 0.2;
+    transition: opacity 0.15s;
+    margin-top: 8px;
+}
+.contact-card-exclude-btn button[kind="secondary"]:hover {
+    opacity: 0.8;
+    color: #e85c5c !important;
+    border-color: #e85c5c !important;
+}
+
 /* --- 7. KPI Metric Cards --- */
 div[data-testid="stMetric"] {
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));

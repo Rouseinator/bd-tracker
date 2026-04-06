@@ -233,6 +233,12 @@ def _save_memory(memory: dict) -> None:
         log.warning("Could not save classification memory: %s", exc)
 
 
+def _is_excluded_reasoning(reasoning: str) -> bool:
+    """Check if the AI reasoning indicates the contact was excluded (auto or manual)."""
+    r = str(reasoning)
+    return r.startswith("Auto-excluded") or r.startswith("Manually excluded")
+
+
 def _apply_memory(df) -> pd.DataFrame:
     """Apply saved classifications to a DataFrame after sync."""
     memory = _load_memory()
@@ -240,7 +246,7 @@ def _apply_memory(df) -> pd.DataFrame:
         return df
     for idx, row in df.iterrows():
         # Never override auto-excluded contacts with memory — auto-exclude takes priority
-        if str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+        if _is_excluded_reasoning(row.get("ai_reasoning", "")):
             continue
         email = row.get("counterparty_email", "")
         if email in memory:
@@ -280,6 +286,35 @@ def _enforce_auto_exclude(df) -> pd.DataFrame:
     return df
 
 
+def _manually_exclude_email(email: str, df: pd.DataFrame) -> None:
+    """Manually exclude an email from the pipeline — persisted in memory."""
+    # Update the DataFrame in session state
+    for idx, row in df.iterrows():
+        if row.get("counterparty_email") == email:
+            df.at[idx, "bd_relevant"] = False
+            df.at[idx, "stage"] = "Not BD"
+            df.at[idx, "contact_type"] = "not_relevant"
+            df.at[idx, "ai_confidence"] = 1.0
+            df.at[idx, "ai_reasoning"] = "Manually excluded by user."
+            df.at[idx, "ai_stage_reasoning"] = ""
+            df.at[idx, "next_step"] = ""
+    st.session_state.tracker_df = df
+    # Persist in memory so it survives re-sync
+    memory = _load_memory()
+    memory[email] = {
+        "bd_relevant": False,
+        "contact_type": "not_relevant",
+        "stage": "Not BD",
+        "ai_confidence": 1.0,
+        "ai_reasoning": "Manually excluded by user.",
+        "ai_stage_reasoning": "",
+        "next_step": "",
+        "client_name": "",
+        "classified_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_memory(memory)
+
+
 def _update_memory(df) -> None:
     """Save current classifications to memory file."""
     memory = _load_memory()
@@ -289,7 +324,9 @@ def _update_memory(df) -> None:
             continue
         # Don't save auto-excluded contacts to memory — they should always
         # be re-evaluated against the current exclusion rules on each sync
-        if str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+        # But DO keep manually excluded contacts in memory (user intent)
+        reasoning = str(row.get("ai_reasoning", ""))
+        if reasoning.startswith("Auto-excluded"):
             memory.pop(email, None)  # Remove stale entry if present
             continue
         bd_relevant = row.get("bd_relevant")
@@ -328,7 +365,6 @@ def init_state() -> None:
         "show_excluded": False,
         "pipeline_summary": "",
         "pipeline_stage_filter": None,
-        "excluded_from_pipeline": set(),  # emails manually excluded from pipeline table
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -978,7 +1014,7 @@ def run_ai_classification(df, progress_callback=None):
     to_classify = []
     for idx, row in df.iterrows():
         # Skip auto-excluded
-        if str(row.get("ai_reasoning", "")).startswith("Auto-excluded"):
+        if _is_excluded_reasoning(row.get("ai_reasoning", "")):
             continue
         # Already classified — but re-classify if client name looks bad
         if row.get("bd_relevant") is not None:
@@ -1404,7 +1440,7 @@ def render_top_nav():
             df = st.session_state.tracker_df
             if not df.empty:
                 for idx in df.index:
-                    if str(df.at[idx, "ai_reasoning"]).startswith("Auto-excluded"):
+                    if _is_excluded_reasoning(str(df.at[idx, "ai_reasoning"])):
                         continue
                     df.at[idx, "bd_relevant"] = None
                     df.at[idx, "contact_type"] = ""
@@ -1582,6 +1618,7 @@ def render_contact_cards(df):
         confidence = row.get("ai_confidence")
         reasoning = row.get("ai_reasoning", "")
         stage_reasoning = row.get("ai_stage_reasoning", "")
+        email = row.get("counterparty_email", "")
 
         notes_text = str(row.get("notes", "")) if row.get("notes") else ""
         if len(notes_text) > 300:
@@ -1644,7 +1681,7 @@ def render_contact_cards(df):
             f'<summary>View details</summary>'
             f'<div class="card-detail-row">'
             f'<span class="card-detail-label">Email</span>'
-            f'<span class="card-detail-value">{_esc(row.get("counterparty_email", ""))}</span>'
+            f'<span class="card-detail-value">{_esc(email)}</span>'
             f'</div>'
             f'<div class="card-detail-row">'
             f'<span class="card-detail-label">Owner</span>'
@@ -1659,7 +1696,18 @@ def render_contact_cards(df):
             f'</details>'
             f'</div>'
         )
-        st.markdown(card_html, unsafe_allow_html=True)
+
+        # Card + exclude button in a row
+        card_col, btn_col = st.columns([20, 1])
+        with card_col:
+            st.markdown(card_html, unsafe_allow_html=True)
+        with btn_col:
+            is_auto = _is_excluded_reasoning(row.get("ai_reasoning", ""))
+            is_manual = str(row.get("ai_reasoning", "")).startswith("Manually excluded")
+            if not is_auto and not is_manual:
+                if st.button("✕", key=f"manual_excl_{email}", help=f"Exclude {email} from pipeline"):
+                    _manually_exclude_email(email, df)
+                    st.rerun()
 
 
 def render_csv_export(df):
@@ -1684,15 +1732,7 @@ def render_pipeline_summary():
     if df.empty or "bd_relevant" not in df.columns:
         return
 
-    excluded_emails = st.session_state.get("excluded_from_pipeline", set())
-
     bd_df = df[df["bd_relevant"].fillna(False).astype(bool)].copy()
-    if bd_df.empty:
-        return
-
-    # Filter out manually excluded contacts
-    if excluded_emails:
-        bd_df = bd_df[~bd_df["counterparty_email"].isin(excluded_emails)]
     if bd_df.empty:
         return
 
@@ -1770,7 +1810,7 @@ def render_pipeline_summary():
         ("touch", "Last Touch", 1),
         ("next", "Next Step", 3),
     ]
-    hdr_cols = st.columns([s[2] for s in sort_columns] + [0.5])
+    hdr_cols = st.columns([s[2] for s in sort_columns])
     for i, (col_key, label, _) in enumerate(sort_columns):
         with hdr_cols[i]:
             # Show sort arrow if this column is active
@@ -1796,9 +1836,6 @@ def render_pipeline_summary():
                     f'letter-spacing:0.06em;color:#6b7a8d;padding:6px 2px;">{label}</div>',
                     unsafe_allow_html=True,
                 )
-    with hdr_cols[-1]:
-        st.markdown("", unsafe_allow_html=True)
-
     # Table body — one Streamlit row per client+stage group
     for data in rows_list:
         client = data["client"]
@@ -1817,7 +1854,7 @@ def render_pipeline_summary():
             f'{_esc(stage)}</span>'
         )
 
-        row_cols = st.columns([2.5, 2, 1.2, 1, 3, 0.5])
+        row_cols = st.columns([2.5, 2, 1.2, 1, 3])
         with row_cols[0]:
             st.markdown(f'<div style="font-weight:600;color:#edf0f7;font-size:0.82rem;padding:4px 2px;">{_esc(client)}</div>', unsafe_allow_html=True)
         with row_cols[1]:
@@ -1828,17 +1865,6 @@ def render_pipeline_summary():
             st.markdown(f'<div style="color:{days_color};font-size:0.8rem;padding:4px 2px;">{days_str}</div>', unsafe_allow_html=True)
         with row_cols[4]:
             st.markdown(f'<div style="color:#8090a7;font-size:0.76rem;padding:4px 2px;">{_esc(next_step)}</div>', unsafe_allow_html=True)
-        with row_cols[5]:
-            emails_key = "_".join(sorted(data["emails"]))[:40]
-            if st.button("✕", key=f"excl_{emails_key}", help=f"Exclude {client} from pipeline"):
-                st.session_state.excluded_from_pipeline.update(data["emails"])
-                st.rerun()
-
-    # Show reset button if any contacts have been excluded
-    if excluded_emails:
-        if st.button(f"↩ Restore {len(excluded_emails)} excluded", key="reset_excluded"):
-            st.session_state.excluded_from_pipeline = set()
-            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
