@@ -474,6 +474,9 @@ def normalise_messages(messages, box, internal_domains):
             counterparty = _email_addr(m.get("from", {}))
             if _is_internal(counterparty, internal_domains):
                 continue
+            # Drop obviously non-BD emails at the earliest stage
+            if _is_auto_excluded(counterparty, m.get("subject", "")):
+                continue
             rows.append({
                 "message_id": m.get("id"),
                 "conversation_id": m.get("conversationId"),
