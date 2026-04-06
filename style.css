@@ -270,6 +270,66 @@ div[data-testid="stSidebar"] { display: none !important; }
     line-height: 1.65;
 }
 
+/* Pipeline insight table */
+.pipeline-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+.pipeline-table thead th {
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6b7a8d;
+    padding: 6px 10px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.pipeline-table tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.15s;
+}
+.pipeline-table tbody tr:last-child {
+    border-bottom: none;
+}
+.pipeline-table tbody tr:hover {
+    background: rgba(94,198,193,0.04);
+}
+.pipeline-table td {
+    padding: 8px 10px;
+    color: #c8d0de;
+    vertical-align: middle;
+}
+.pipeline-table .col-client {
+    font-weight: 600;
+    color: #edf0f7;
+    white-space: nowrap;
+}
+.pipeline-table .col-contact {
+    color: #96a5b8;
+}
+.pipeline-table .col-days {
+    white-space: nowrap;
+    color: #96a5b8;
+}
+.pipeline-table .col-days.stale {
+    color: #e8a84c;
+}
+.pipeline-table .col-next {
+    color: #8090a7;
+    font-size: 0.76rem;
+    max-width: 260px;
+}
+.summary-stage-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
 /* --- 7. KPI Metric Cards --- */
 div[data-testid="stMetric"] {
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));

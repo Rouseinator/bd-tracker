@@ -1671,16 +1671,58 @@ def render_csv_export(df):
 
 
 def render_pipeline_summary():
-    summary = st.session_state.get("pipeline_summary", "")
-    if not summary:
+    """Render the pipeline insight as a styled table of BD-relevant contacts."""
+    df = st.session_state.get("tracker_df", pd.DataFrame())
+    if df.empty or "bd_relevant" not in df.columns:
         return
+
+    bd_df = df[df["bd_relevant"].fillna(False).astype(bool)].copy()
+    if bd_df.empty:
+        return
+
+    # Sort by stage order, then days since touch
+    stage_rank = {s: i for i, s in enumerate(STAGE_ORDER)}
+    bd_df["_stage_rank"] = bd_df["stage"].map(stage_rank).fillna(99)
+    bd_df = bd_df.sort_values(["_stage_rank", "days_since_touch"], ascending=[True, False])
+
+    # Build table rows
+    table_rows = ""
+    for _, row in bd_df.iterrows():
+        client = _esc(row.get("client_name", "Unknown"))
+        contact = _esc(row.get("contact_name", ""))
+        stage = row.get("stage", "Pending")
+        fg, bg, border = STAGE_STYLES.get(stage, STAGE_STYLES["Pending"])
+        days = row.get("days_since_touch")
+        days_str = f"{int(days)}d ago" if days is not None and not pd.isna(days) else "—"
+        days_class = ' class="stale"' if days is not None and not pd.isna(days) and days >= 14 else ""
+        next_step = _esc(str(row.get("next_step", ""))[:80])
+        stage_pill = (
+            f'<span class="summary-stage-pill" '
+            f'style="color:{fg};background:{bg};border:1px solid {border};">'
+            f'{_esc(stage)}</span>'
+        )
+        table_rows += (
+            f'<tr>'
+            f'<td class="col-client">{client}</td>'
+            f'<td class="col-contact">{contact}</td>'
+            f'<td class="col-stage">{stage_pill}</td>'
+            f'<td class="col-days"{days_class}>{days_str}</td>'
+            f'<td class="col-next">{next_step}</td>'
+            f'</tr>'
+        )
+
     summary_html = (
         '<div class="pipeline-summary">'
         '<div class="pipeline-summary-header">'
         '<span class="pipeline-summary-icon">\U0001F4A1</span>'
         '<span class="pipeline-summary-title">Pipeline Insight</span>'
         '</div>'
-        f'<div class="pipeline-summary-text">{_esc(summary)}</div>'
+        '<table class="pipeline-table">'
+        '<thead><tr>'
+        '<th>Client</th><th>Contact</th><th>Stage</th><th>Last Touch</th><th>Next Step</th>'
+        '</tr></thead>'
+        f'<tbody>{table_rows}</tbody>'
+        '</table>'
         '</div>'
     )
     st.markdown(summary_html, unsafe_allow_html=True)
