@@ -328,6 +328,7 @@ def init_state() -> None:
         "show_excluded": False,
         "pipeline_summary": "",
         "pipeline_stage_filter": None,
+        "excluded_from_pipeline": set(),  # emails manually excluded from pipeline table
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -939,6 +940,9 @@ Thread ({msg_count} messages):
 
 {contacts_text}
 
+IMPORTANT — PROJECT GROUPING:
+Multiple contacts from the SAME organisation (same email domain) may relate to the SAME project or relationship. When you see two or more contacts from the same domain, consider whether their email threads are about the same engagement. If they are (e.g. two people from Maurice Blackburn both discussing the same piece of work), give them the SAME stage — the most appropriate stage based on the combined picture. Only give them different stages if the threads are genuinely about separate, unrelated engagements.
+
 For EACH contact, respond with a JSON object inside a JSON array. Each object must have:
 {{
   "contact_index": 1-based index matching the CONTACT number above,
@@ -983,6 +987,10 @@ def run_ai_classification(df, progress_callback=None):
                 continue  # good name, skip
             # Bad name — re-classify to get proper_company_name from AI
         to_classify.append((idx, row))
+
+    # Sort by domain so contacts from the same org end up in the same batch —
+    # this lets the AI see the full picture and assign consistent stages
+    to_classify.sort(key=lambda x: (x[1].get("counterparty_email", "").split("@")[-1], x[0]))
 
     total = len(to_classify)
     if total == 0:
@@ -1676,56 +1684,120 @@ def render_pipeline_summary():
     if df.empty or "bd_relevant" not in df.columns:
         return
 
+    excluded_emails = st.session_state.get("excluded_from_pipeline", set())
+
     bd_df = df[df["bd_relevant"].fillna(False).astype(bool)].copy()
     if bd_df.empty:
         return
 
-    # Sort by stage order, then days since touch
+    # Filter out manually excluded contacts
+    if excluded_emails:
+        bd_df = bd_df[~bd_df["counterparty_email"].isin(excluded_emails)]
+    if bd_df.empty:
+        return
+
+    # Group by client name — merge contacts from the same organisation
+    # Use the most advanced stage and most recent touch date
     stage_rank = {s: i for i, s in enumerate(STAGE_ORDER)}
     bd_df["_stage_rank"] = bd_df["stage"].map(stage_rank).fillna(99)
-    bd_df = bd_df.sort_values(["_stage_rank", "days_since_touch"], ascending=[True, False])
 
-    # Build table rows
-    table_rows = ""
+    grouped_clients = {}
     for _, row in bd_df.iterrows():
-        client = _esc(row.get("client_name", "Unknown"))
-        contact = _esc(row.get("contact_name", ""))
-        stage = row.get("stage", "Pending")
-        fg, bg, border = STAGE_STYLES.get(stage, STAGE_STYLES["Pending"])
-        days = row.get("days_since_touch")
-        days_str = f"{int(days)}d ago" if days is not None and not pd.isna(days) else "—"
-        days_class = ' class="stale"' if days is not None and not pd.isna(days) and days >= 14 else ""
-        next_step = _esc(str(row.get("next_step", ""))[:80])
-        stage_pill = (
-            f'<span class="summary-stage-pill" '
-            f'style="color:{fg};background:{bg};border:1px solid {border};">'
-            f'{_esc(stage)}</span>'
-        )
-        table_rows += (
-            f'<tr>'
-            f'<td class="col-client">{client}</td>'
-            f'<td class="col-contact">{contact}</td>'
-            f'<td class="col-stage">{stage_pill}</td>'
-            f'<td class="col-days"{days_class}>{days_str}</td>'
-            f'<td class="col-next">{next_step}</td>'
-            f'</tr>'
-        )
+        client = row.get("client_name", "Unknown")
+        if client not in grouped_clients:
+            grouped_clients[client] = {
+                "contacts": [],
+                "emails": [],
+                "stage": row.get("stage", "Pending"),
+                "stage_rank": row.get("_stage_rank", 99),
+                "days": row.get("days_since_touch"),
+                "next_step": str(row.get("next_step", "")),
+            }
+        entry = grouped_clients[client]
+        contact_name = row.get("contact_name", "")
+        if contact_name and contact_name not in entry["contacts"]:
+            entry["contacts"].append(contact_name)
+        entry["emails"].append(row.get("counterparty_email", ""))
+        # Use the most advanced (lowest rank) stage
+        row_rank = row.get("_stage_rank", 99)
+        if row_rank < entry["stage_rank"]:
+            entry["stage"] = row.get("stage", "Pending")
+            entry["stage_rank"] = row_rank
+        # Use the most recent touch date
+        row_days = row.get("days_since_touch")
+        if row_days is not None and not pd.isna(row_days):
+            if entry["days"] is None or pd.isna(entry["days"]) or row_days < entry["days"]:
+                entry["days"] = row_days
+        # Use the next_step from the most advanced stage contact
+        if row_rank <= entry["stage_rank"] and str(row.get("next_step", "")):
+            entry["next_step"] = str(row.get("next_step", ""))
 
-    summary_html = (
+    # Sort by stage order, then days since touch
+    sorted_clients = sorted(
+        grouped_clients.items(),
+        key=lambda x: (x[1]["stage_rank"], -(x[1]["days"] if x[1]["days"] is not None and not pd.isna(x[1]["days"]) else 0)),
+    )
+
+    # Header
+    st.markdown(
         '<div class="pipeline-summary">'
         '<div class="pipeline-summary-header">'
         '<span class="pipeline-summary-icon">\U0001F4A1</span>'
         '<span class="pipeline-summary-title">Pipeline Insight</span>'
-        '</div>'
-        '<table class="pipeline-table">'
-        '<thead><tr>'
-        '<th>Client</th><th>Contact</th><th>Stage</th><th>Last Touch</th><th>Next Step</th>'
-        '</tr></thead>'
-        f'<tbody>{table_rows}</tbody>'
-        '</table>'
-        '</div>'
+        '</div></div>',
+        unsafe_allow_html=True,
     )
-    st.markdown(summary_html, unsafe_allow_html=True)
+
+    # Table header row
+    hdr_cols = st.columns([2.5, 2, 1.2, 1, 3, 0.5])
+    headers = ["Client", "Contact(s)", "Stage", "Last Touch", "Next Step", ""]
+    for i, h in enumerate(headers):
+        with hdr_cols[i]:
+            st.markdown(
+                f'<div style="font-size:0.68rem;font-weight:600;text-transform:uppercase;'
+                f'letter-spacing:0.06em;color:#6b7a8d;padding:0 2px;">{h}</div>',
+                unsafe_allow_html=True,
+            )
+
+    # Table body — one Streamlit row per client
+    for client, data in sorted_clients:
+        stage = data["stage"]
+        fg, bg, border = STAGE_STYLES.get(stage, STAGE_STYLES["Pending"])
+        days = data["days"]
+        days_str = f"{int(days)}d ago" if days is not None and not pd.isna(days) else "—"
+        days_color = "#e8a84c" if days is not None and not pd.isna(days) and days >= 14 else "#96a5b8"
+        contacts_str = ", ".join(data["contacts"][:3])
+        if len(data["contacts"]) > 3:
+            contacts_str += f" +{len(data['contacts']) - 3}"
+        next_step = data["next_step"][:80]
+        stage_html = (
+            f'<span class="summary-stage-pill" '
+            f'style="color:{fg};background:{bg};border:1px solid {border};">'
+            f'{_esc(stage)}</span>'
+        )
+
+        row_cols = st.columns([2.5, 2, 1.2, 1, 3, 0.5])
+        with row_cols[0]:
+            st.markdown(f'<div style="font-weight:600;color:#edf0f7;font-size:0.82rem;padding:4px 2px;">{_esc(client)}</div>', unsafe_allow_html=True)
+        with row_cols[1]:
+            st.markdown(f'<div style="color:#96a5b8;font-size:0.8rem;padding:4px 2px;">{_esc(contacts_str)}</div>', unsafe_allow_html=True)
+        with row_cols[2]:
+            st.markdown(stage_html, unsafe_allow_html=True)
+        with row_cols[3]:
+            st.markdown(f'<div style="color:{days_color};font-size:0.8rem;padding:4px 2px;">{days_str}</div>', unsafe_allow_html=True)
+        with row_cols[4]:
+            st.markdown(f'<div style="color:#8090a7;font-size:0.76rem;padding:4px 2px;">{_esc(next_step)}</div>', unsafe_allow_html=True)
+        with row_cols[5]:
+            emails_key = "_".join(sorted(data["emails"]))[:40]
+            if st.button("✕", key=f"excl_{emails_key}", help=f"Exclude {client} from pipeline"):
+                st.session_state.excluded_from_pipeline.update(data["emails"])
+                st.rerun()
+
+    # Show reset button if any contacts have been excluded
+    if excluded_emails:
+        if st.button(f"↩ Restore {len(excluded_emails)} excluded", key="reset_excluded"):
+            st.session_state.excluded_from_pipeline = set()
+            st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

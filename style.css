@@ -330,6 +330,19 @@ div[data-testid="stSidebar"] { display: none !important; }
     white-space: nowrap;
 }
 
+/* Exclude button in pipeline table — small, subtle */
+.pipeline-summary + div [data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"] {
+    font-size: 0.7rem !important;
+    padding: 2px 6px !important;
+    min-height: 0 !important;
+    height: 24px !important;
+    opacity: 0.3;
+    transition: opacity 0.15s;
+}
+.pipeline-summary + div [data-testid="stHorizontalBlock"] button[data-testid="stBaseButton-secondary"]:hover {
+    opacity: 1;
+}
+
 /* --- 7. KPI Metric Cards --- */
 div[data-testid="stMetric"] {
     background: linear-gradient(180deg, rgba(16,22,38,0.95), rgba(12,17,30,0.96));
