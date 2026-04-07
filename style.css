@@ -319,7 +319,6 @@ div[data-testid="stSidebar"] { display: none !important; }
 .pipeline-table .col-next {
     color: #8090a7;
     font-size: 0.76rem;
-    max-width: 260px;
 }
 .summary-stage-pill {
     display: inline-block;
@@ -330,23 +329,6 @@ div[data-testid="stSidebar"] { display: none !important; }
     white-space: nowrap;
 }
 
-/* Pipeline table sort header buttons — look like column headers */
-.pipeline-summary ~ [data-testid="stVerticalBlockBorderWrapper"]:first-of-type button[kind="secondary"] {
-    font-size: 0.68rem !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.06em !important;
-    color: #6b7a8d !important;
-    background: transparent !important;
-    border: none !important;
-    padding: 4px 2px !important;
-    min-height: 0 !important;
-    text-align: left !important;
-    cursor: pointer !important;
-}
-.pipeline-summary ~ [data-testid="stVerticalBlockBorderWrapper"]:first-of-type button[kind="secondary"]:hover {
-    color: #5ec6c1 !important;
-}
 
 /* Contact card exclude button — small, subtle ✕ */
 .contact-card-exclude-btn button[kind="secondary"] {

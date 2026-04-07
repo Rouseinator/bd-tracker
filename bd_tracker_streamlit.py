@@ -1774,97 +1774,71 @@ def render_pipeline_summary():
 
     rows_list = list(grouped.values())
 
-    # Sort order — user can toggle by clicking column headers
-    sort_key = st.session_state.get("pipeline_sort", "stage")
-    sort_asc = st.session_state.get("pipeline_sort_asc", True)
-
-    def _sort_val(r, key):
-        if key == "client":
-            return r["client"].lower()
-        elif key == "stage":
-            return r["stage_rank"]
-        elif key == "touch":
-            d = r["days"]
-            return d if d is not None and not pd.isna(d) else 9999
-        elif key == "next":
-            return r["next_step"].lower()
-        return 0
-
-    rows_list.sort(key=lambda r: _sort_val(r, sort_key), reverse=not sort_asc)
-
-    # Header with title
-    st.markdown(
-        '<div class="pipeline-summary">'
-        '<div class="pipeline-summary-header">'
-        '<span class="pipeline-summary-icon">\U0001F4A1</span>'
-        '<span class="pipeline-summary-title">Pipeline Insight</span>'
-        '</div></div>',
-        unsafe_allow_html=True,
-    )
-
-    # Sortable column headers — clicking toggles sort
-    sort_columns = [
-        ("client", "Client", 2.5),
-        ("contact", "Contact(s)", 2),
-        ("stage", "Stage", 1.2),
-        ("touch", "Last Touch", 1),
-        ("next", "Next Step", 3),
-    ]
-    hdr_cols = st.columns([s[2] for s in sort_columns])
-    for i, (col_key, label, _) in enumerate(sort_columns):
-        with hdr_cols[i]:
-            # Show sort arrow if this column is active
-            if sort_key == col_key:
-                arrow = " ▲" if sort_asc else " ▼"
-            else:
-                arrow = ""
-            if col_key != "contact":  # contact column not sortable
-                if st.button(
-                    f"{label}{arrow}",
-                    key=f"sort_{col_key}",
-                    use_container_width=True,
-                ):
-                    if sort_key == col_key:
-                        st.session_state.pipeline_sort_asc = not sort_asc
-                    else:
-                        st.session_state.pipeline_sort = col_key
-                        st.session_state.pipeline_sort_asc = True
-                    st.rerun()
-            else:
-                st.markdown(
-                    f'<div style="font-size:0.68rem;font-weight:600;text-transform:uppercase;'
-                    f'letter-spacing:0.06em;color:#6b7a8d;padding:6px 2px;">{label}</div>',
-                    unsafe_allow_html=True,
-                )
-    # Table body — one Streamlit row per client+stage group
-    for data in rows_list:
-        client = data["client"]
-        stage = data["stage"]
-        fg, bg, border = STAGE_STYLES.get(stage, STAGE_STYLES["Pending"])
-        days = data["days"]
-        days_str = f"{int(days)}d ago" if days is not None and not pd.isna(days) else "—"
-        days_color = "#e8a84c" if days is not None and not pd.isna(days) and days >= 14 else "#96a5b8"
-        contacts_str = ", ".join(data["contacts"][:3])
-        if len(data["contacts"]) > 3:
-            contacts_str += f" +{len(data['contacts']) - 3}"
-        next_step = data["next_step"][:80]
-        stage_html = (
-            f'<span class="summary-stage-pill" '
-            f'style="color:{fg};background:{bg};border:1px solid {border};">'
-            f'{_esc(stage)}</span>'
+    # Sort control
+    sort_options = {
+        "Stage": ("stage_rank", False),
+        "Client A–Z": ("client", False),
+        "Most recent": ("days", False),
+        "Oldest first": ("days", True),
+    }
+    with st.expander("💡 Pipeline Insight", expanded=True):
+        sort_choice = st.selectbox(
+            "Sort by",
+            list(sort_options.keys()),
+            key="pipeline_sort_select",
+            label_visibility="collapsed",
         )
+        sort_field, sort_reverse = sort_options[sort_choice]
 
-        row_cols = st.columns([2.5, 2, 1.2, 1, 3])
-        with row_cols[0]:
-            st.markdown(f'<div style="font-weight:600;color:#edf0f7;font-size:0.82rem;padding:4px 2px;">{_esc(client)}</div>', unsafe_allow_html=True)
-        with row_cols[1]:
-            st.markdown(f'<div style="color:#96a5b8;font-size:0.8rem;padding:4px 2px;">{_esc(contacts_str)}</div>', unsafe_allow_html=True)
-        with row_cols[2]:
-            st.markdown(stage_html, unsafe_allow_html=True)
-        with row_cols[3]:
-            st.markdown(f'<div style="color:{days_color};font-size:0.8rem;padding:4px 2px;">{days_str}</div>', unsafe_allow_html=True)
-        with row_cols[4]:
-            st.markdown(f'<div style="color:#8090a7;font-size:0.76rem;padding:4px 2px;">{_esc(next_step)}</div>', unsafe_allow_html=True)
+        def _sort_val(r):
+            if sort_field == "client":
+                return r["client"].lower()
+            elif sort_field == "stage_rank":
+                return r["stage_rank"]
+            elif sort_field == "days":
+                d = r["days"]
+                return d if d is not None and not pd.isna(d) else 9999
+            return 0
+
+        rows_list.sort(key=_sort_val, reverse=sort_reverse)
+
+        # Build HTML table rows
+        table_rows = ""
+        for data in rows_list:
+            client = data["client"]
+            stage = data["stage"]
+            fg, bg, border = STAGE_STYLES.get(stage, STAGE_STYLES["Pending"])
+            days = data["days"]
+            days_str = f"{int(days)}d ago" if days is not None and not pd.isna(days) else "—"
+            days_class = ' class="stale"' if days is not None and not pd.isna(days) and days >= 14 else ""
+            contacts_str = ", ".join(data["contacts"][:3])
+            if len(data["contacts"]) > 3:
+                contacts_str += f" +{len(data['contacts']) - 3}"
+            next_step = _esc(data["next_step"])
+            stage_pill = (
+                f'<span class="summary-stage-pill" '
+                f'style="color:{fg};background:{bg};border:1px solid {border};">'
+                f'{_esc(stage)}</span>'
+            )
+            table_rows += (
+                f'<tr>'
+                f'<td class="col-client">{_esc(client)}</td>'
+                f'<td class="col-contact">{_esc(contacts_str)}</td>'
+                f'<td class="col-stage">{stage_pill}</td>'
+                f'<td class="col-days"{days_class}>{days_str}</td>'
+                f'<td class="col-next">{next_step}</td>'
+                f'</tr>'
+            )
+
+        st.markdown(
+            '<table class="pipeline-table">'
+            '<thead><tr>'
+            '<th>Client</th><th>Contact(s)</th><th>Stage</th><th>Last Touch</th><th>Next Step</th>'
+            '</tr></thead>'
+            f'<tbody>{table_rows}</tbody>'
+            '</table>',
+            unsafe_allow_html=True,
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
